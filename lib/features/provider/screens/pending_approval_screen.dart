@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../core/database/app_database.dart';
+import '../../../core/auth/local_auth_service.dart';
 import '../../../core/router/app_router.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../auth/providers/auth_provider.dart';
@@ -18,20 +18,7 @@ class _PendingApprovalScreenState extends ConsumerState<PendingApprovalScreen> {
   int _refreshTick = 0;
 
   Future<String> _getStatus(String uid) async {
-    final db = await AppDatabase.instance.database;
-    final rows = await db.query(
-      'providers',
-      columns: <String>['verification_status'],
-      where: 'user_id = ?',
-      whereArgs: <Object>[uid],
-      limit: 1,
-    );
-
-    if (rows.isEmpty) {
-      return 'pending';
-    }
-
-    return rows.first['verification_status'] as String? ?? 'pending';
+    return LocalAuthService.instance.getProviderVerificationStatus(uid);
   }
 
   @override

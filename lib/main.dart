@@ -8,7 +8,7 @@ import 'core/theme/app_theme.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Initialize local SQLite auth/database services.
+  // Initialize auth/session services.
   await LocalAuthService.instance.initialize();
 
   // Set preferred orientations

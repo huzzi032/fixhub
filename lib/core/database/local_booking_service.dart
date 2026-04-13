@@ -1,10 +1,7 @@
-import 'dart:async';
+﻿import 'dart:async';
 
-import 'package:uuid/uuid.dart';
-
-import '../constants/app_constants.dart';
+import '../auth/local_auth_service.dart';
 import '../../shared/models/booking_model.dart';
-import 'app_database.dart';
 
 class LocalBookingService {
   LocalBookingService._();
@@ -22,99 +19,65 @@ class LocalBookingService {
     String? customerName,
     bool isSOS = false,
   }) async {
-    final db = await AppDatabase.instance.database;
-    final bookingId = const Uuid().v4();
-    final now = DateTime.now().millisecondsSinceEpoch;
+    final response = await _postAction('createBooking', <String, dynamic>{
+      'customerId': customerId,
+      'serviceCategory': serviceCategory,
+      'issueTitle': issueTitle,
+      'issueDescription': issueDescription,
+      'address': address,
+      'scheduledAt': scheduledAt.millisecondsSinceEpoch,
+      'serviceId': serviceId,
+      'customerName': customerName,
+      'isSOS': isSOS,
+    });
 
-    await db.insert(
-      'bookings',
-      <String, Object?>{
-        'booking_id': bookingId,
-        'customer_id': customerId,
-        'provider_id': null,
-        'service_id': serviceId,
-        'service_category': serviceCategory,
-        'issue_title': issueTitle,
-        'issue_description': issueDescription,
-        'address': address,
-        'scheduled_at': scheduledAt.millisecondsSinceEpoch,
-        'created_at': now,
-        'status': 'pending',
-        'agreed_price': null,
-        'payment_status': 'pending',
-        'customer_name': customerName,
-        'provider_name': null,
-        'is_sos': isSOS ? 1 : 0,
-      },
-    );
+    final bookingId = response['bookingId']?.toString().trim();
+    if (bookingId == null || bookingId.isEmpty) {
+      throw StateError('Failed to create booking.');
+    }
 
     return bookingId;
   }
 
   Future<BookingModel?> getBookingById(String bookingId) async {
-    final db = await AppDatabase.instance.database;
-    final rows = await db.query(
-      'bookings',
-      where: 'booking_id = ?',
-      whereArgs: <Object>[bookingId],
-      limit: 1,
-    );
+    final response = await _getAction('getById', <String, String>{
+      'bookingId': bookingId,
+    });
 
-    if (rows.isEmpty) {
+    final row = response['booking'];
+    if (row is! Map) {
       return null;
     }
 
-    return _mapRowToBooking(rows.first);
+    return _mapRowToBooking(Map<String, dynamic>.from(row));
   }
 
   Future<List<BookingModel>> getCustomerBookings(String customerId) async {
-    final db = await AppDatabase.instance.database;
-    final rows = await db.query(
-      'bookings',
-      where: 'customer_id = ?',
-      whereArgs: <Object>[customerId],
-      orderBy: 'created_at DESC',
-    );
-
-    return rows.map(_mapRowToBooking).toList();
+    final response = await _getAction('getCustomerBookings', <String, String>{
+      'customerId': customerId,
+    });
+    return _mapBookings(response['bookings']);
   }
 
   Future<List<BookingModel>> getProviderActiveBookings(
       String providerId) async {
-    final db = await AppDatabase.instance.database;
-    final rows = await db.query(
-      'bookings',
-      where: 'provider_id = ? AND status IN (?, ?, ?)',
-      whereArgs: <Object>[providerId, 'accepted', 'enRoute', 'inProgress'],
-      orderBy: 'created_at DESC',
+    final response = await _getAction(
+      'getProviderActiveBookings',
+      <String, String>{'providerId': providerId},
     );
-
-    return rows.map(_mapRowToBooking).toList();
+    return _mapBookings(response['bookings']);
   }
 
   Future<List<BookingModel>> getProviderJobs(String providerId) async {
-    final db = await AppDatabase.instance.database;
-    final rows = await db.query(
-      'bookings',
-      where: 'provider_id = ?',
-      whereArgs: <Object>[providerId],
-      orderBy: 'created_at DESC',
-    );
-
-    return rows.map(_mapRowToBooking).toList();
+    final response = await _getAction('getProviderJobs', <String, String>{
+      'providerId': providerId,
+    });
+    return _mapBookings(response['bookings']);
   }
 
   Future<List<BookingModel>> getIncomingLeads() async {
-    final db = await AppDatabase.instance.database;
-    final rows = await db.query(
-      'bookings',
-      where: 'provider_id IS NULL AND status = ?',
-      whereArgs: <Object>['pending'],
-      orderBy: 'created_at DESC',
-      limit: 20,
-    );
-
-    return rows.map(_mapRowToBooking).toList();
+    final response = await _getAction('getIncomingLeads');
+    return _mapBookings(response['bookings']);
   }
 
   Future<void> acceptLead({
@@ -124,117 +87,75 @@ class LocalBookingService {
     required int quoteAmount,
     String? providerNote,
   }) async {
-    final db = await AppDatabase.instance.database;
-    await db.update(
-      'bookings',
-      <String, Object?>{
-        'provider_id': providerId,
-        'provider_name': providerName,
-        'agreed_price': quoteAmount,
-        'provider_note': providerNote,
-        'status': BookingStatus.accepted,
-      },
-      where: 'booking_id = ?',
-      whereArgs: <Object>[bookingId],
-    );
+    await _postAction('acceptLead', <String, dynamic>{
+      'bookingId': bookingId,
+      'providerId': providerId,
+      'providerName': providerName,
+      'quoteAmount': quoteAmount,
+      'providerNote': providerNote,
+    });
   }
 
   Future<void> updateBookingStatus({
     required String bookingId,
     required String status,
   }) async {
-    final db = await AppDatabase.instance.database;
-    await db.update(
-      'bookings',
-      <String, Object?>{'status': status},
-      where: 'booking_id = ?',
-      whereArgs: <Object>[bookingId],
-    );
+    await _postAction('updateBookingStatus', <String, dynamic>{
+      'bookingId': bookingId,
+      'status': status,
+    });
   }
 
   Future<void> markPaymentCollected({
     required String bookingId,
   }) async {
-    final db = await AppDatabase.instance.database;
-    final booking = await getBookingById(bookingId);
-    if (booking == null) {
-      return;
-    }
-
-    await db.update(
-      'bookings',
-      <String, Object?>{
-        'status': BookingStatus.paid,
-        'payment_status': PaymentStatus.collected,
-      },
-      where: 'booking_id = ?',
-      whereArgs: <Object>[bookingId],
-    );
-
-    final providerId = booking.providerId;
-    final amount = booking.agreedPrice ?? 0;
-    if (providerId != null && amount > 0) {
-      await db.rawUpdate(
-        '''
-        UPDATE providers
-        SET wallet_balance = wallet_balance + ?,
-            earnings_total = earnings_total + ?
-        WHERE user_id = ?
-        ''',
-        <Object>[amount, amount, providerId],
-      );
-    }
+    await _postAction('markPaymentCollected', <String, dynamic>{
+      'bookingId': bookingId,
+    });
   }
 
   Future<int> getProviderWalletBalance(String providerId) async {
-    final db = await AppDatabase.instance.database;
-    final rows = await db.query(
-      'providers',
-      columns: <String>['wallet_balance'],
-      where: 'user_id = ?',
-      whereArgs: <Object>[providerId],
-      limit: 1,
-    );
+    final response =
+        await _getAction('getProviderWalletBalance', <String, String>{
+      'providerId': providerId,
+    });
 
-    if (rows.isEmpty) {
-      return 0;
-    }
-
-    return rows.first['wallet_balance'] as int? ?? 0;
+    return _asInt(response['walletBalance']);
   }
 
   Future<void> topUpWallet({
     required String providerId,
     required int amount,
   }) async {
-    final db = await AppDatabase.instance.database;
-    await db.rawUpdate(
-      'UPDATE providers SET wallet_balance = wallet_balance + ? WHERE user_id = ?',
-      <Object>[amount, providerId],
-    );
+    await _postAction('topUpWallet', <String, dynamic>{
+      'providerId': providerId,
+      'amount': amount,
+    });
   }
 
   Future<ProviderEarningsSummary> getProviderEarnings(String providerId) async {
-    final jobs = await getProviderJobs(providerId);
-    final wallet = await getProviderWalletBalance(providerId);
+    final response = await _getAction('getProviderEarnings', <String, String>{
+      'providerId': providerId,
+    });
 
-    final totalEarned = jobs
-        .where((job) => job.status == BookingStatus.paid)
-        .fold<int>(0, (sum, job) => sum + (job.agreedPrice ?? 0));
+    final summaryRaw = response['summary'];
+    if (summaryRaw is! Map) {
+      return const ProviderEarningsSummary(
+        totalEarned: 0,
+        pendingAmount: 0,
+        walletBalance: 0,
+        completedJobs: 0,
+        activeJobs: 0,
+      );
+    }
 
-    final pending = jobs
-        .where((job) => job.status == BookingStatus.completed)
-        .fold<int>(0, (sum, job) => sum + (job.agreedPrice ?? 0));
-
-    final activeJobs = jobs.where((job) => job.isActive).length;
-
+    final summary = Map<String, dynamic>.from(summaryRaw);
     return ProviderEarningsSummary(
-      totalEarned: totalEarned,
-      pendingAmount: pending,
-      walletBalance: wallet,
-      completedJobs:
-          jobs.where((job) => job.status == BookingStatus.paid).length,
-      activeJobs: activeJobs,
+      totalEarned: _asInt(summary['totalEarned']),
+      pendingAmount: _asInt(summary['pendingAmount']),
+      walletBalance: _asInt(summary['walletBalance']),
+      completedJobs: _asInt(summary['completedJobs']),
+      activeJobs: _asInt(summary['activeJobs']),
     );
   }
 
@@ -245,41 +166,13 @@ class LocalBookingService {
     required int rating,
     String? comment,
   }) async {
-    final db = await AppDatabase.instance.database;
-
-    await db.insert(
-      'reviews',
-      <String, Object?>{
-        'review_id': const Uuid().v4(),
-        'booking_id': bookingId,
-        'provider_id': providerId,
-        'customer_id': customerId,
-        'rating': rating,
-        'comment': comment?.trim(),
-        'created_at': DateTime.now().millisecondsSinceEpoch,
-      },
-    );
-
-    final ratingRow = await db.rawQuery(
-      '''
-      SELECT AVG(rating) AS avg_rating, COUNT(*) AS total_count
-      FROM reviews
-      WHERE provider_id = ?
-      ''',
-      <Object>[providerId],
-    );
-
-    final avg = (ratingRow.first['avg_rating'] as num?)?.toDouble() ?? 0;
-    final count = (ratingRow.first['total_count'] as int?) ?? 0;
-
-    await db.rawUpdate(
-      '''
-      UPDATE provider_services
-      SET rating = ?, review_count = ?
-      WHERE provider_id = ?
-      ''',
-      <Object>[avg, count, providerId],
-    );
+    await _postAction('submitReview', <String, dynamic>{
+      'bookingId': bookingId,
+      'providerId': providerId,
+      'customerId': customerId,
+      'rating': rating,
+      'comment': comment,
+    });
   }
 
   Future<void> sendBookingMessage({
@@ -287,59 +180,29 @@ class LocalBookingService {
     required String senderId,
     required String message,
   }) async {
-    final text = message.trim();
-    if (text.isEmpty) {
-      return;
-    }
-
-    if (text.length > 500) {
-      throw ArgumentError('Message is too long');
-    }
-
-    final booking = await getBookingById(bookingId);
-    if (booking == null) {
-      throw ArgumentError('Booking not found');
-    }
-
-    final isCustomer = senderId == booking.customerId;
-    final isAssignedProvider =
-        booking.providerId != null && senderId == booking.providerId;
-
-    if (!isCustomer && !isAssignedProvider) {
-      throw StateError('User is not allowed to chat for this booking');
-    }
-
-    final senderRole = isCustomer ? 'customer' : 'provider';
-    final recipientId = isCustomer ? booking.providerId : booking.customerId;
-
-    final db = await AppDatabase.instance.database;
-    await db.insert(
-      'booking_chat_messages',
-      <String, Object?>{
-        'message_id': const Uuid().v4(),
-        'booking_id': bookingId,
-        'sender_id': senderId,
-        'sender_role': senderRole,
-        'recipient_id': recipientId,
-        'message_text': text,
-        'is_read': 0,
-        'sent_at': DateTime.now().millisecondsSinceEpoch,
-      },
-    );
+    await _postAction('sendMessage', <String, dynamic>{
+      'bookingId': bookingId,
+      'senderId': senderId,
+      'message': message,
+    });
   }
 
   Future<List<BookingChatMessage>> getBookingMessages(
     String bookingId,
   ) async {
-    final db = await AppDatabase.instance.database;
-    final rows = await db.query(
-      'booking_chat_messages',
-      where: 'booking_id = ?',
-      whereArgs: <Object>[bookingId],
-      orderBy: 'sent_at ASC',
-    );
+    final response = await _getAction('getMessages', <String, String>{
+      'bookingId': bookingId,
+    });
 
-    return rows.map(_mapRowToChatMessage).toList();
+    final raw = response['messages'];
+    if (raw is! List) {
+      return const <BookingChatMessage>[];
+    }
+
+    return raw
+        .whereType<Map>()
+        .map((row) => _mapRowToChatMessage(Map<String, dynamic>.from(row)))
+        .toList();
   }
 
   Stream<List<BookingChatMessage>> watchBookingMessages(
@@ -367,41 +230,81 @@ class LocalBookingService {
     required String bookingId,
     required String viewerId,
   }) async {
-    final db = await AppDatabase.instance.database;
-    await db.update(
-      'booking_chat_messages',
-      <String, Object?>{'is_read': 1},
-      where: 'booking_id = ? AND recipient_id = ? AND is_read = 0',
-      whereArgs: <Object>[bookingId, viewerId],
+    await _postAction('markMessagesRead', <String, dynamic>{
+      'bookingId': bookingId,
+      'viewerId': viewerId,
+    });
+  }
+
+  Future<Map<String, dynamic>> _getAction(
+    String action, [
+    Map<String, String>? params,
+  ]) {
+    final query = <String, String>{
+      'action': action,
+      ...?params,
+    };
+
+    final path = '/api/bookings?${Uri(queryParameters: query).query}';
+    return LocalAuthService.instance.request(
+      method: 'GET',
+      path: path,
+      requireAuth: true,
     );
   }
 
-  BookingModel _mapRowToBooking(Map<String, Object?> row) {
+  Future<Map<String, dynamic>> _postAction(
+    String action,
+    Map<String, dynamic> payload,
+  ) {
+    return LocalAuthService.instance.request(
+      method: 'POST',
+      path: '/api/bookings',
+      requireAuth: true,
+      body: <String, dynamic>{
+        'action': action,
+        ...payload,
+      },
+    );
+  }
+
+  List<BookingModel> _mapBookings(dynamic raw) {
+    if (raw is! List) {
+      return const <BookingModel>[];
+    }
+
+    return raw
+        .whereType<Map>()
+        .map((row) => _mapRowToBooking(Map<String, dynamic>.from(row)))
+        .toList();
+  }
+
+  BookingModel _mapRowToBooking(Map<String, dynamic> row) {
     final map = <String, dynamic>{
-      'bookingId': row['booking_id'],
-      'customerId': row['customer_id'],
-      'providerId': row['provider_id'],
-      'serviceId': row['service_id'],
-      'serviceCategory': row['service_category'],
-      'issueTitle': row['issue_title'],
-      'issueDescription': row['issue_description'],
-      'imageUrls': <String>[],
-      'address': row['address'],
+      'bookingId': row['booking_id']?.toString() ?? '',
+      'customerId': row['customer_id']?.toString() ?? '',
+      'providerId': _asStringOrNull(row['provider_id']),
+      'serviceId': _asStringOrNull(row['service_id']),
+      'serviceCategory': row['service_category']?.toString() ?? 'other',
+      'issueTitle': row['issue_title']?.toString() ?? '',
+      'issueDescription': row['issue_description']?.toString() ?? '',
+      'imageUrls': const <String>[],
+      'address': row['address']?.toString() ?? '',
       'locationGeoPoint': null,
-      'scheduledAt': row['scheduled_at'],
-      'createdAt': row['created_at'],
-      'status': row['status'],
-      'isSOS': (row['is_sos'] as int? ?? 0) == 1,
-      'agreedPrice': row['agreed_price'],
+      'scheduledAt': _asInt(row['scheduled_at']),
+      'createdAt': _asInt(row['created_at']),
+      'status': row['status']?.toString() ?? 'pending',
+      'isSOS': _asInt(row['is_sos']) == 1,
+      'agreedPrice': _asIntOrNull(row['agreed_price']),
       'paymentMethod': 'cash',
-      'paymentStatus': row['payment_status'],
-      'providerNote': row['provider_note'],
+      'paymentStatus': row['payment_status']?.toString() ?? 'pending',
+      'providerNote': _asStringOrNull(row['provider_note']),
       'customerConfirmed': false,
       'cancellationReason': null,
-      'customerName': row['customer_name'],
+      'customerName': _asStringOrNull(row['customer_name']),
       'customerPhone': null,
       'customerPhoto': null,
-      'providerName': row['provider_name'],
+      'providerName': _asStringOrNull(row['provider_name']),
       'providerPhone': null,
       'providerPhoto': null,
     };
@@ -409,19 +312,50 @@ class LocalBookingService {
     return BookingModel.fromMap(map);
   }
 
-  BookingChatMessage _mapRowToChatMessage(Map<String, Object?> row) {
+  BookingChatMessage _mapRowToChatMessage(Map<String, dynamic> row) {
     return BookingChatMessage(
-      messageId: row['message_id'] as String,
-      bookingId: row['booking_id'] as String,
-      senderId: row['sender_id'] as String,
-      senderRole: row['sender_role'] as String? ?? 'customer',
-      recipientId: row['recipient_id'] as String?,
-      messageText: row['message_text'] as String? ?? '',
-      isRead: (row['is_read'] as int? ?? 0) == 1,
-      sentAt: DateTime.fromMillisecondsSinceEpoch(
-        row['sent_at'] as int? ?? 0,
-      ),
+      messageId: row['message_id']?.toString() ?? '',
+      bookingId: row['booking_id']?.toString() ?? '',
+      senderId: row['sender_id']?.toString() ?? '',
+      senderRole: row['sender_role']?.toString() ?? 'customer',
+      recipientId: _asStringOrNull(row['recipient_id']),
+      messageText: row['message_text']?.toString() ?? '',
+      isRead: _asInt(row['is_read']) == 1,
+      sentAt: DateTime.fromMillisecondsSinceEpoch(_asInt(row['sent_at'])),
     );
+  }
+
+  int _asInt(dynamic value, [int fallback = 0]) {
+    if (value is int) {
+      return value;
+    }
+
+    if (value is num) {
+      return value.toInt();
+    }
+
+    if (value is String && value.trim().isNotEmpty) {
+      return int.tryParse(value.trim()) ?? fallback;
+    }
+
+    return fallback;
+  }
+
+  int? _asIntOrNull(dynamic value) {
+    if (value == null) {
+      return null;
+    }
+
+    return _asInt(value);
+  }
+
+  String? _asStringOrNull(dynamic value) {
+    if (value == null) {
+      return null;
+    }
+
+    final text = value.toString();
+    return text.isEmpty ? null : text;
   }
 }
 

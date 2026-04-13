@@ -91,7 +91,7 @@ class _EmailSignInScreenState extends ConsumerState<EmailSignInScreen> {
     }
   }
 
-  void _forgotPassword() {
+  Future<void> _forgotPassword() async {
     final email = _emailController.text.trim();
     if (email.isEmpty) {
       setState(() {
@@ -108,14 +108,29 @@ class _EmailSignInScreenState extends ConsumerState<EmailSignInScreen> {
       return;
     }
 
-    ref.read(authNotifierProvider.notifier).resetPassword(email);
+    try {
+      await ref.read(authNotifierProvider.notifier).resetPassword(email);
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Password reset email sent. Check your inbox.'),
-        backgroundColor: AppColors.success,
-      ),
-    );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Password reset is not enabled yet. Please contact support.',
+          ),
+          backgroundColor: AppColors.warning,
+        ),
+      );
+    } on AppAuthException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _errorMessage = e.message;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _errorMessage = 'Unable to process password reset right now.';
+      });
+    }
   }
 
   @override

@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:sqflite/sqflite.dart';
 
+import '../../../core/auth/local_auth_service.dart';
 import '../../../core/constants/app_constants.dart';
-import '../../../core/database/app_database.dart';
 import '../../../core/router/app_router.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../auth/providers/auth_provider.dart';
@@ -130,29 +129,8 @@ class _ProviderRegistrationScreenState
                                 _submitting = true;
                               });
 
-                              final db = await AppDatabase.instance.database;
-                              final now = DateTime.now().millisecondsSinceEpoch;
-
-                              await db.insert(
-                                'providers',
-                                <String, Object?>{
-                                  'user_id': user.uid,
-                                  'verification_status': 'pending',
-                                  'wallet_balance': 0,
-                                  'earnings_total': 0,
-                                  'joined_at': now,
-                                },
-                                conflictAlgorithm: ConflictAlgorithm.ignore,
-                              );
-
-                              await db.update(
-                                'providers',
-                                <String, Object?>{
-                                  'verification_status': 'pending',
-                                },
-                                where: 'user_id = ?',
-                                whereArgs: <Object>[user.uid],
-                              );
+                              await LocalAuthService.instance
+                                  .submitProviderRegistration(uid: user.uid);
 
                               if (context.mounted) {
                                 ScaffoldMessenger.of(context).showSnackBar(

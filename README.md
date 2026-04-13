@@ -7,8 +7,8 @@ This project is now Firebase-free.
 ## What Changed
 
 - Firebase dependency removed from the app.
-- App authentication and user profile storage moved to local SQLite (`sqflite`) for zero-cost offline usage.
-- Added an optional deployable backend in [backend/](backend/) for Vercel using Supabase Postgres.
+- Core app data flows now use a deployable backend in [backend/](backend/) on Vercel with Supabase Postgres.
+- Auth, user profiles, bookings, services, neighborhood deals, and chat are served through backend APIs.
 
 ## Features
 
@@ -39,8 +39,8 @@ This project is now Firebase-free.
 - Flutter 3.x
 - Riverpod
 - GoRouter
-- Local database: SQLite (`sqflite`)
-- Optional cloud backend: Vercel Serverless + Supabase Postgres
+- Backend APIs: Vercel Serverless + Supabase Postgres
+- Local device settings: SharedPreferences
 
 ## Project Structure
 
@@ -66,7 +66,7 @@ backend/
    lib/
 ```
 
-## Run App (Free, No Cloud Needed)
+## Run App
 
 1. Install dependencies:
 
@@ -74,19 +74,19 @@ backend/
 flutter pub get
 ```
 
-2. Run app:
+2. Run app with backend URL:
 
 ```bash
-flutter run
+flutter run --dart-define=FIXHUB_API_BASE_URL=https://your-backend.vercel.app
 ```
 
-3. Phone OTP in local mode:
+3. Phone OTP in development mode:
 
 - Use `123456` (development OTP).
 
-## Optional Backend (Vercel)
+## Backend (Vercel)
 
-The app can run fully local, but if you want deployable backend APIs:
+The app uses deployable backend APIs for multi-user shared data:
 
 1. Go to [backend/](backend/)
 2. Install dependencies:
@@ -107,7 +107,13 @@ npx vercel dev
 - `DATABASE_URL`
 - `JWT_SECRET`
 
+Use the exact Supabase Session Pooler URI for `DATABASE_URL` (copied from dashboard), not the direct DB host.
+
 Recommended free DB: Supabase Postgres.
+
+Run SQL setup once in Supabase:
+
+- [backend/supabase/setup.sql](backend/supabase/setup.sql)
 
 ## Backend API Endpoints
 
@@ -118,6 +124,14 @@ Recommended free DB: Supabase Postgres.
 - `POST /api/auth/verify-otp`
 - `POST /api/users/create-profile`
 - `GET /api/users/me`
+- `GET /api/users/provider-status`
+- `GET /api/users/saved-addresses`
+- `POST /api/users/add-saved-address`
+- `POST /api/users/remove-saved-address`
+- `GET /api/bookings?action=...`
+- `POST /api/bookings` with `action`
+- `GET /api/marketplace?action=...`
+- `POST /api/marketplace` with `action`
 
 ## Notes
 

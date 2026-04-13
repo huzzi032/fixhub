@@ -11,6 +11,48 @@ This backend is designed for free deployment on Vercel using Supabase Postgres.
 - `POST /api/auth/verify-otp`
 - `POST /api/users/create-profile`
 - `GET /api/users/me`
+- `GET /api/users/provider-status`
+- `GET /api/users/saved-addresses`
+- `POST /api/users/add-saved-address`
+- `POST /api/users/remove-saved-address`
+- `GET /api/bookings?action=...`
+- `POST /api/bookings` with `action`
+- `GET /api/marketplace?action=...`
+- `POST /api/marketplace` with `action`
+
+### Booking Actions
+
+- `getById`
+- `getCustomerBookings`
+- `getProviderActiveBookings`
+- `getProviderJobs`
+- `getIncomingLeads`
+- `getProviderWalletBalance`
+- `getProviderEarnings`
+- `getMessages`
+- `createBooking`
+- `acceptLead`
+- `updateBookingStatus`
+- `markPaymentCollected`
+- `topUpWallet`
+- `submitReview`
+- `sendMessage`
+- `markMessagesRead`
+
+### Marketplace Actions
+
+- `searchServices`
+- `getServicesByCategory`
+- `getProviderServices`
+- `getServiceById`
+- `getDeals`
+- `getFeaturedDeals`
+- `saveProviderService`
+- `setServiceActive`
+- `deleteService`
+- `createDeal`
+- `joinDeal`
+- `leaveDeal`
 
 ## Environment Variables
 
@@ -29,13 +71,17 @@ Optional:
 ## Supabase Connection Setup
 
 1. Open Supabase project settings and copy the Session Pooler connection string.
-2. URL-encode your password before placing it in `DATABASE_URL`.
-3. Keep SSL enabled (`DATABASE_SSL=true`) for production.
+2. Keep the copied username and host exactly as shown in Supabase.
+3. URL-encode your password before placing it in `DATABASE_URL`.
+4. Keep SSL enabled (`DATABASE_SSL=true`) for production.
+5. Run [backend/supabase/setup.sql](supabase/setup.sql) in Supabase SQL Editor.
 
-Example with encoded password:
+Do not manually guess the host/user format. Supabase pooler formats vary by project and pooler mode, so always use the exact values copied from your dashboard.
+
+Example template:
 
 ```bash
-DATABASE_URL=postgresql://postgres:myPassword%21with%3Fchars@aws-0-your-region.pooler.supabase.com:6543/postgres
+DATABASE_URL=postgresql://[USERNAME_FROM_DASHBOARD]:myPassword%21with%3Fchars@[POOLER_HOST_FROM_DASHBOARD]:6543/postgres
 ```
 
 ## Local Run

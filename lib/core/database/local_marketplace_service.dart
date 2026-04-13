@@ -1,8 +1,5 @@
-import 'package:uuid/uuid.dart';
-import 'package:sqflite/sqflite.dart';
-
+﻿import '../auth/local_auth_service.dart';
 import '../constants/app_constants.dart';
-import 'app_database.dart';
 
 class LocalMarketplaceService {
   LocalMarketplaceService._();
@@ -17,94 +14,49 @@ class LocalMarketplaceService {
     double minRating = 0,
     String sortBy = 'nearest',
   }) async {
-    final db = await AppDatabase.instance.database;
+    final response = await _getAction('searchServices', <String, String>{
+      'query': query.trim(),
+      'categories': categories.map(_normalizeCategory).join(','),
+      'minPrice': '$minPrice',
+      'maxPrice': '$maxPrice',
+      'minRating': '$minRating',
+      'sortBy': sortBy,
+    });
 
-    final normalizedCategories = categories
-        .map(_normalizeCategory)
-        .where((element) => element.isNotEmpty)
-        .toSet();
-
-    final whereClauses = <String>['is_active = 1'];
-    final whereArgs = <Object>[];
-
-    final normalizedQuery = query.trim().toLowerCase();
-    if (normalizedQuery.isNotEmpty) {
-      whereClauses.add(
-        '(LOWER(title) LIKE ? OR LOWER(description) LIKE ? OR LOWER(provider_name) LIKE ? OR LOWER(category) LIKE ?)',
-      );
-      final like = '%$normalizedQuery%';
-      whereArgs
-        ..add(like)
-        ..add(like)
-        ..add(like)
-        ..add(like);
-    }
-
-    if (normalizedCategories.isNotEmpty) {
-      final placeholders =
-          List<String>.filled(normalizedCategories.length, '?');
-      whereClauses.add('category IN (${placeholders.join(',')})');
-      whereArgs.addAll(normalizedCategories);
-    }
-
-    whereClauses.add('max_price >= ?');
-    whereArgs.add(minPrice);
-    whereClauses.add('min_price <= ?');
-    whereArgs.add(maxPrice);
-
-    whereClauses.add('rating >= ?');
-    whereArgs.add(minRating);
-
-    final orderBy = switch (sortBy) {
-      'rating' => 'rating DESC, review_count DESC',
-      'price_low' => 'min_price ASC',
-      'price_high' => 'max_price DESC',
-      _ => 'created_at DESC',
-    };
-
-    final rows = await db.query(
-      'provider_services',
-      where: whereClauses.join(' AND '),
-      whereArgs: whereArgs,
-      orderBy: orderBy,
-    );
-
-    return rows.map(_mapServiceRow).toList();
+    return _mapServices(response['services']);
   }
 
   Future<List<MarketplaceServiceItem>> getServicesByCategory(
     String category,
   ) async {
-    return searchServices(categories: <String>{category});
+    final response = await _getAction('getServicesByCategory', <String, String>{
+      'category': _normalizeCategory(category),
+    });
+
+    return _mapServices(response['services']);
   }
 
   Future<List<MarketplaceServiceItem>> getProviderServices(
-      String providerId) async {
-    final db = await AppDatabase.instance.database;
-    final rows = await db.query(
-      'provider_services',
-      where: 'provider_id = ?',
-      whereArgs: <Object>[providerId],
-      orderBy: 'created_at DESC',
-    );
+    String providerId,
+  ) async {
+    final response = await _getAction('getProviderServices', <String, String>{
+      'providerId': providerId,
+    });
 
-    return rows.map(_mapServiceRow).toList();
+    return _mapServices(response['services']);
   }
 
   Future<MarketplaceServiceItem?> getServiceById(String serviceId) async {
-    final db = await AppDatabase.instance.database;
-    final rows = await db.query(
-      'provider_services',
-      where: 'service_id = ?',
-      whereArgs: <Object>[serviceId],
-      limit: 1,
-    );
+    final response = await _getAction('getServiceById', <String, String>{
+      'serviceId': serviceId,
+    });
 
-    if (rows.isEmpty) {
+    final raw = response['service'];
+    if (raw is! Map) {
       return null;
     }
 
-    return _mapServiceRow(rows.first);
+    return _mapServiceRow(Map<String, dynamic>.from(raw));
   }
 
   Future<String> saveProviderService({
@@ -118,49 +70,37 @@ class LocalMarketplaceService {
     required int maxPrice,
     bool isActive = true,
   }) async {
-    final db = await AppDatabase.instance.database;
-    final now = DateTime.now().millisecondsSinceEpoch;
-    final id = serviceId ?? const Uuid().v4();
+    final response = await _postAction('saveProviderService', <String, dynamic>{
+      'serviceId': serviceId,
+      'providerId': providerId,
+      'providerName': providerName,
+      'title': title,
+      'description': description,
+      'category': _normalizeCategory(category),
+      'minPrice': minPrice,
+      'maxPrice': maxPrice,
+      'isActive': isActive,
+    });
 
-    await db.insert(
-      'provider_services',
-      <String, Object?>{
-        'service_id': id,
-        'provider_id': providerId,
-        'provider_name': providerName,
-        'title': title,
-        'description': description,
-        'category': _normalizeCategory(category),
-        'min_price': minPrice,
-        'max_price': maxPrice,
-        'rating': 4.0,
-        'review_count': 0,
-        'is_active': isActive ? 1 : 0,
-        'created_at': now,
-      },
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    final id = response['serviceId']?.toString().trim();
+    if (id == null || id.isEmpty) {
+      throw StateError('Failed to save provider service.');
+    }
 
     return id;
   }
 
   Future<void> setServiceActive(String serviceId, bool isActive) async {
-    final db = await AppDatabase.instance.database;
-    await db.update(
-      'provider_services',
-      <String, Object?>{'is_active': isActive ? 1 : 0},
-      where: 'service_id = ?',
-      whereArgs: <Object>[serviceId],
-    );
+    await _postAction('setServiceActive', <String, dynamic>{
+      'serviceId': serviceId,
+      'isActive': isActive,
+    });
   }
 
   Future<void> deleteService(String serviceId) async {
-    final db = await AppDatabase.instance.database;
-    await db.delete(
-      'provider_services',
-      where: 'service_id = ?',
-      whereArgs: <Object>[serviceId],
-    );
+    await _postAction('deleteService', <String, dynamic>{
+      'serviceId': serviceId,
+    });
   }
 
   Future<List<NeighborhoodDealItem>> getDeals({
@@ -168,52 +108,25 @@ class LocalMarketplaceService {
     String? city,
     String? area,
   }) async {
-    final db = await AppDatabase.instance.database;
+    final response = await _getAction('getDeals', <String, String>{
+      if (userId != null && userId.trim().isNotEmpty) 'userId': userId.trim(),
+      if (city != null && city.trim().isNotEmpty) 'city': city.trim(),
+      if (area != null && area.trim().isNotEmpty) 'area': area.trim(),
+    });
 
-    final whereClauses = <String>['d.status = ?'];
-    final whereArgs = <Object>['open'];
-
-    if (city != null && city.trim().isNotEmpty) {
-      whereClauses.add('LOWER(d.city) = ?');
-      whereArgs.add(city.trim().toLowerCase());
-    }
-
-    if (area != null && area.trim().isNotEmpty) {
-      whereClauses.add('LOWER(d.area) LIKE ?');
-      whereArgs.add('%${area.trim().toLowerCase()}%');
-    }
-
-    final joinUser = userId ?? '';
-
-    final rows = await db.rawQuery(
-      '''
-      SELECT
-        d.*,
-        creator.name AS created_by_name,
-        COUNT(p.user_id) AS participants_count,
-        MAX(CASE WHEN p.user_id = ? THEN 1 ELSE 0 END) AS has_joined
-      FROM neighborhood_deals d
-      LEFT JOIN deal_participants p ON p.deal_id = d.deal_id
-      LEFT JOIN users creator ON creator.uid = d.created_by
-      WHERE ${whereClauses.join(' AND ')}
-      GROUP BY d.deal_id
-      ORDER BY d.created_at DESC
-      ''',
-      <Object>[joinUser, ...whereArgs],
-    );
-
-    return rows.map(_mapDealRow).toList();
+    return _mapDeals(response['deals']);
   }
 
   Future<List<NeighborhoodDealItem>> getFeaturedDeals({
     String? userId,
     int limit = 5,
   }) async {
-    final deals = await getDeals(userId: userId);
-    if (deals.length <= limit) {
-      return deals;
-    }
-    return deals.sublist(0, limit);
+    final response = await _getAction('getFeaturedDeals', <String, String>{
+      if (userId != null && userId.trim().isNotEmpty) 'userId': userId.trim(),
+      'limit': '$limit',
+    });
+
+    return _mapDeals(response['deals']);
   }
 
   Future<String> createDeal({
@@ -227,40 +140,22 @@ class LocalMarketplaceService {
     required int discountPercent,
     int expiryDays = 7,
   }) async {
-    final db = await AppDatabase.instance.database;
-    final creatorRows = await db.query(
-      'users',
-      columns: <String>['uid', 'role'],
-      where: 'uid = ? AND role = ?',
-      whereArgs: <Object>[createdBy, 'provider'],
-      limit: 1,
-    );
+    final response = await _postAction('createDeal', <String, dynamic>{
+      'createdBy': createdBy,
+      'serviceCategory': _normalizeCategory(serviceCategory),
+      'area': area,
+      'city': city,
+      'description': description,
+      'minParticipants': minParticipants,
+      'maxParticipants': maxParticipants,
+      'discountPercent': discountPercent,
+      'expiryDays': expiryDays,
+    });
 
-    if (creatorRows.isEmpty) {
-      throw StateError('Only verified providers can create deals');
+    final dealId = response['dealId']?.toString().trim();
+    if (dealId == null || dealId.isEmpty) {
+      throw StateError('Failed to create deal.');
     }
-
-    final now = DateTime.now();
-    final dealId = const Uuid().v4();
-
-    await db.insert(
-      'neighborhood_deals',
-      <String, Object?>{
-        'deal_id': dealId,
-        'service_category': _normalizeCategory(serviceCategory),
-        'area': area.trim(),
-        'city': city.trim(),
-        'description': description.trim(),
-        'min_participants': minParticipants,
-        'max_participants': maxParticipants,
-        'discount_percent': discountPercent,
-        'created_by': createdBy,
-        'status': 'open',
-        'created_at': now.millisecondsSinceEpoch,
-        'expires_at':
-            now.add(Duration(days: expiryDays)).millisecondsSinceEpoch,
-      },
-    );
 
     return dealId;
   }
@@ -269,138 +164,111 @@ class LocalMarketplaceService {
     required String dealId,
     required String userId,
   }) async {
-    final db = await AppDatabase.instance.database;
-
-    final participantRows = await db.query(
-      'users',
-      columns: <String>['uid', 'role'],
-      where: 'uid = ? AND role = ?',
-      whereArgs: <Object>[userId, 'customer'],
-      limit: 1,
-    );
-
-    if (participantRows.isEmpty) {
-      throw StateError('Only customers can join neighborhood deals');
-    }
-
-    final dealRows = await db.query(
-      'neighborhood_deals',
-      columns: <String>['created_by'],
-      where: 'deal_id = ?',
-      whereArgs: <Object>[dealId],
-      limit: 1,
-    );
-
-    if (dealRows.isNotEmpty && dealRows.first['created_by'] == userId) {
-      throw StateError('Deal creators cannot join their own deals');
-    }
-
-    await db.insert(
-      'deal_participants',
-      <String, Object?>{
-        'deal_id': dealId,
-        'user_id': userId,
-        'joined_at': DateTime.now().millisecondsSinceEpoch,
-      },
-      conflictAlgorithm: ConflictAlgorithm.ignore,
-    );
-
-    await _refreshDealStatus(dealId);
+    await _postAction('joinDeal', <String, dynamic>{
+      'dealId': dealId,
+      'userId': userId,
+    });
   }
 
   Future<void> leaveDeal({
     required String dealId,
     required String userId,
   }) async {
-    final db = await AppDatabase.instance.database;
-
-    await db.delete(
-      'deal_participants',
-      where: 'deal_id = ? AND user_id = ?',
-      whereArgs: <Object>[dealId, userId],
-    );
-
-    await _refreshDealStatus(dealId);
+    await _postAction('leaveDeal', <String, dynamic>{
+      'dealId': dealId,
+      'userId': userId,
+    });
   }
 
-  Future<void> _refreshDealStatus(String dealId) async {
-    final db = await AppDatabase.instance.database;
+  Future<Map<String, dynamic>> _getAction(
+    String action,
+    Map<String, String> params,
+  ) {
+    final query = <String, String>{
+      'action': action,
+      ...params,
+    };
 
-    final dealRows = await db.query(
-      'neighborhood_deals',
-      where: 'deal_id = ?',
-      whereArgs: <Object>[dealId],
-      limit: 1,
-    );
-
-    if (dealRows.isEmpty) {
-      return;
-    }
-
-    final deal = dealRows.first;
-    final maxParticipants = deal['max_participants'] as int?;
-    final expiresAt = deal['expires_at'] as int? ?? 0;
-
-    final participantCount = Sqflite.firstIntValue(
-          await db.rawQuery(
-            'SELECT COUNT(*) FROM deal_participants WHERE deal_id = ?',
-            <Object>[dealId],
-          ),
-        ) ??
-        0;
-
-    String nextStatus = 'open';
-    if (DateTime.now().millisecondsSinceEpoch > expiresAt) {
-      nextStatus = 'expired';
-    } else if (maxParticipants != null && participantCount >= maxParticipants) {
-      nextStatus = 'filled';
-    }
-
-    await db.update(
-      'neighborhood_deals',
-      <String, Object?>{'status': nextStatus},
-      where: 'deal_id = ?',
-      whereArgs: <Object>[dealId],
+    final path = '/api/marketplace?${Uri(queryParameters: query).query}';
+    return LocalAuthService.instance.request(
+      method: 'GET',
+      path: path,
+      requireAuth: true,
     );
   }
 
-  MarketplaceServiceItem _mapServiceRow(Map<String, Object?> row) {
+  Future<Map<String, dynamic>> _postAction(
+    String action,
+    Map<String, dynamic> payload,
+  ) {
+    return LocalAuthService.instance.request(
+      method: 'POST',
+      path: '/api/marketplace',
+      requireAuth: true,
+      body: <String, dynamic>{
+        'action': action,
+        ...payload,
+      },
+    );
+  }
+
+  List<MarketplaceServiceItem> _mapServices(dynamic raw) {
+    if (raw is! List) {
+      return const <MarketplaceServiceItem>[];
+    }
+
+    return raw
+        .whereType<Map>()
+        .map((row) => _mapServiceRow(Map<String, dynamic>.from(row)))
+        .toList();
+  }
+
+  List<NeighborhoodDealItem> _mapDeals(dynamic raw) {
+    if (raw is! List) {
+      return const <NeighborhoodDealItem>[];
+    }
+
+    return raw
+        .whereType<Map>()
+        .map((row) => _mapDealRow(Map<String, dynamic>.from(row)))
+        .toList();
+  }
+
+  MarketplaceServiceItem _mapServiceRow(Map<String, dynamic> row) {
     return MarketplaceServiceItem(
-      serviceId: row['service_id'] as String,
-      providerId: row['provider_id'] as String? ?? '',
-      providerName: row['provider_name'] as String? ?? 'Provider',
-      title: row['title'] as String? ?? '',
-      description: row['description'] as String? ?? '',
-      category: row['category'] as String? ?? 'other',
-      minPrice: row['min_price'] as int? ?? 0,
-      maxPrice: row['max_price'] as int? ?? 0,
-      rating: (row['rating'] as num?)?.toDouble() ?? 0,
-      reviewCount: row['review_count'] as int? ?? 0,
-      isActive: (row['is_active'] as int? ?? 0) == 1,
+      serviceId: row['service_id']?.toString() ?? '',
+      providerId: row['provider_id']?.toString() ?? '',
+      providerName: row['provider_name']?.toString() ?? 'Provider',
+      title: row['title']?.toString() ?? '',
+      description: row['description']?.toString() ?? '',
+      category: row['category']?.toString() ?? 'other',
+      minPrice: _asInt(row['min_price']),
+      maxPrice: _asInt(row['max_price']),
+      rating: _asDouble(row['rating']),
+      reviewCount: _asInt(row['review_count']),
+      isActive: _asInt(row['is_active']) == 1,
     );
   }
 
-  NeighborhoodDealItem _mapDealRow(Map<String, Object?> row) {
+  NeighborhoodDealItem _mapDealRow(Map<String, dynamic> row) {
     return NeighborhoodDealItem(
-      dealId: row['deal_id'] as String,
-      serviceCategory: row['service_category'] as String? ?? 'other',
-      area: row['area'] as String? ?? '',
-      city: row['city'] as String? ?? '',
-      description: row['description'] as String? ?? '',
-      minParticipants: row['min_participants'] as int? ?? 1,
-      maxParticipants: row['max_participants'] as int?,
-      discountPercent: row['discount_percent'] as int? ?? 0,
-      createdBy: row['created_by'] as String?,
-      createdByName: row['created_by_name'] as String?,
-      status: row['status'] as String? ?? 'open',
-      createdAt: DateTime.fromMillisecondsSinceEpoch(
-        row['created_at'] as int? ?? 0,
-      ),
-      expiresAt: DateTime.fromMillisecondsSinceEpoch(
-        row['expires_at'] as int? ?? 0,
-      ),
-      participantsCount: row['participants_count'] as int? ?? 0,
-      hasJoined: (row['has_joined'] as int? ?? 0) == 1,
+      dealId: row['deal_id']?.toString() ?? '',
+      serviceCategory: row['service_category']?.toString() ?? 'other',
+      area: row['area']?.toString() ?? '',
+      city: row['city']?.toString() ?? '',
+      description: row['description']?.toString() ?? '',
+      minParticipants: _asInt(row['min_participants']),
+      maxParticipants: row['max_participants'] == null
+          ? null
+          : _asInt(row['max_participants']),
+      discountPercent: _asInt(row['discount_percent']),
+      createdBy: _asStringOrNull(row['created_by']),
+      createdByName: _asStringOrNull(row['created_by_name']),
+      status: row['status']?.toString() ?? 'open',
+      createdAt: DateTime.fromMillisecondsSinceEpoch(_asInt(row['created_at'])),
+      expiresAt: DateTime.fromMillisecondsSinceEpoch(_asInt(row['expires_at'])),
+      participantsCount: _asInt(row['participants_count']),
+      hasJoined: _asInt(row['has_joined']) == 1,
     );
   }
 
@@ -422,6 +290,47 @@ class LocalMarketplaceService {
     }
 
     return 'other';
+  }
+
+  int _asInt(dynamic value, [int fallback = 0]) {
+    if (value is int) {
+      return value;
+    }
+
+    if (value is num) {
+      return value.toInt();
+    }
+
+    if (value is String && value.trim().isNotEmpty) {
+      return int.tryParse(value.trim()) ?? fallback;
+    }
+
+    return fallback;
+  }
+
+  double _asDouble(dynamic value, [double fallback = 0]) {
+    if (value is double) {
+      return value;
+    }
+
+    if (value is num) {
+      return value.toDouble();
+    }
+
+    if (value is String && value.trim().isNotEmpty) {
+      return double.tryParse(value.trim()) ?? fallback;
+    }
+
+    return fallback;
+  }
+
+  String? _asStringOrNull(dynamic value) {
+    if (value == null) {
+      return null;
+    }
+
+    final text = value.toString();
+    return text.isEmpty ? null : text;
   }
 }
 
