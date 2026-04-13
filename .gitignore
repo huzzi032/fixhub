@@ -50,3 +50,4 @@ backend/.vercel/
 backend/dev.db
 backend/.env
 backend/.env.*
+!backend/.env.example
