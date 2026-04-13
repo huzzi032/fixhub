@@ -1,0 +1,66 @@
+name: fixhub
+description: On-demand home and vehicle services marketplace for Pakistan
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  
+  # State Management
+  flutter_riverpod: ^2.4.9
+  riverpod: ^2.4.9
+  
+  # Navigation
+  go_router: ^13.0.1
+  
+  # Location & Maps
+  geolocator: ^10.1.0
+  geocoding: ^2.1.1
+  flutter_map: ^6.1.0
+  latlong2: ^0.9.0
+  
+  # Image & File Handling
+  image_picker: ^1.0.7
+  flutter_image_compress: ^2.1.0
+  cached_network_image: ^3.3.1
+  photo_view: ^0.14.0
+  
+  # Charts & UI
+  fl_chart: ^0.66.0
+  shimmer: ^3.0.0
+  
+  # Utilities
+  intl: ^0.19.0
+  url_launcher: ^6.2.4
+  shared_preferences: ^2.2.2
+  sqflite: ^2.4.2
+  path: ^1.9.1
+  crypto: ^3.0.6
+  uuid: ^4.3.3
+  path_provider: ^2.1.1
+  permission_handler: ^11.2.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.1
+  flutter_launcher_icons: ^0.13.1
+
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: false
+  image_path: "img/Gemini_Generated_Image_mimfmomimfmomimf.png"
+  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_foreground: "img/Gemini_Generated_Image_mimfmomimfmomimf.png"
+  min_sdk_android: 21
+
+flutter:
+  uses-material-design: true
+  
+  assets:
+    - assets/images/
+    - assets/icons/

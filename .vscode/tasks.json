@@ -1,0 +1,16 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Run FixHub on Samsung",
+			"type": "shell",
+			"command": "flutter",
+			"args": [
+				"run",
+				"-d",
+				"R8VY801GCZB"
+			],
+			"isBackground": true
+		}
+	]
+}

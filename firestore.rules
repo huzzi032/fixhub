@@ -1,0 +1,217 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+    
+    function isCustomer() {
+      return isAuthenticated() && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'customer';
+    }
+    
+    function isProvider() {
+      return isAuthenticated() && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'provider';
+    }
+    
+    function isApprovedProvider() {
+      return isProvider() && 
+        get(/databases/$(database)/documents/providers/$(request.auth.uid)).data.verificationStatus == 'approved';
+    }
+    
+    function getBookingStatus(bookingId) {
+      return get(/databases/$(database)/documents/bookings/$(bookingId)).data.status;
+    }
+    
+    function isBookingParticipant(bookingId) {
+      let booking = get(/databases/$(database)/documents/bookings/$(bookingId)).data;
+      return isAuthenticated() && (request.auth.uid == booking.customerId || request.auth.uid == booking.providerId);
+    }
+    
+    // Users collection
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isOwner(userId);
+      allow update: if isOwner(userId) || isAdmin();
+      allow delete: if isAdmin();
+    }
+    
+    // Customers collection
+    match /customers/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isOwner(userId);
+      allow update: if isOwner(userId) || isAdmin();
+      allow delete: if isAdmin();
+    }
+    
+    // Providers collection
+    match /providers/{userId} {
+      // Anyone can read basic provider info
+      allow read: if isAuthenticated();
+      
+      // Phone number is only visible to:
+      // - The provider themselves
+      // - Admin
+      // - Customers who have an accepted/paid booking with this provider
+      allow read: if isAuthenticated() && 
+        (isOwner(userId) || 
+         isAdmin() ||
+         (isCustomer() && 
+          exists(/databases/$(database)/documents/bookings/{bookingId}) &&
+          get(/databases/$(database)/documents/bookings/{bookingId}).data.providerId == userId &&
+          ['accepted', 'enRoute', 'inProgress', 'completed', 'paid'].includes(get(/databases/$(database)/documents/bookings/{bookingId}).data.status)));
+      
+      allow create: if isOwner(userId);
+      allow update: if isOwner(userId) || isAdmin();
+      allow delete: if isAdmin();
+    }
+    
+    // Services collection
+    match /services/{serviceId} {
+      allow read: if isAuthenticated();
+      allow create: if isApprovedProvider() && 
+        request.resource.data.providerId == request.auth.uid;
+      allow update: if (isProvider() && 
+        resource.data.providerId == request.auth.uid) || isAdmin();
+      allow delete: if (isProvider() && 
+        resource.data.providerId == request.auth.uid) || isAdmin();
+    }
+    
+    // Bookings collection
+    match /bookings/{bookingId} {
+      // Customers can create bookings
+      allow create: if isCustomer() && 
+        request.resource.data.customerId == request.auth.uid;
+      
+      // Participants can read their bookings
+      allow read: if isAuthenticated() && 
+        (resource.data.customerId == request.auth.uid || 
+         resource.data.providerId == request.auth.uid ||
+         isAdmin());
+      
+      // Customers can update their own bookings (cancel, confirm payment)
+      allow update: if isAuthenticated() && 
+        ((resource.data.customerId == request.auth.uid && 
+          (request.resource.data.status == 'cancelled' || 
+           request.resource.data.customerConfirmed == true)) ||
+         (resource.data.providerId == request.auth.uid && 
+          ['accepted', 'enRoute', 'inProgress', 'completed'].includes(request.resource.data.status)) ||
+         isAdmin());
+      
+      allow delete: if isAdmin();
+    }
+    
+    // Bids collection (for SOS)
+    match /bids/{bidId} {
+      // Providers can create bids
+      allow create: if isApprovedProvider() && 
+        request.resource.data.providerId == request.auth.uid;
+      
+      // Participants can read bids
+      allow read: if isAuthenticated();
+      
+      // Only customer who created the booking can accept/reject bids
+      allow update: if isCustomer() && 
+        get(/databases/$(database)/documents/bookings/$(resource.data.bookingId)).data.customerId == request.auth.uid;
+      
+      allow delete: if isAdmin();
+    }
+    
+    // Reviews collection
+    match /reviews/{reviewId} {
+      allow read: if isAuthenticated();
+      
+      // Customers can create reviews for their completed bookings
+      allow create: if isCustomer() && 
+        request.resource.data.customerId == request.auth.uid &&
+        get(/databases/$(database)/documents/bookings/$(request.resource.data.bookingId)).data.status == 'paid';
+      
+      // Providers can reply to their reviews
+      allow update: if isProvider() && 
+        resource.data.providerId == request.auth.uid &&
+        request.resource.data.keys().hasOnly(['providerReply']);
+      
+      allow delete: if isAdmin();
+    }
+    
+    // Neighborhood Deals collection
+    match /neighborhoodDeals/{dealId} {
+      allow read: if isAuthenticated();
+      allow create: if isCustomer() || isProvider();
+      allow update: if isAuthenticated();
+      allow delete: if resource.data.createdBy == request.auth.uid || isAdmin();
+    }
+    
+    // Disputes collection
+    match /disputes/{disputeId} {
+      // Participants can create disputes
+      allow create: if isAuthenticated() && 
+        (request.resource.data.raisedBy == request.auth.uid);
+      
+      // Participants and admin can read
+      allow read: if isAuthenticated() && 
+        (resource.data.raisedBy == request.auth.uid ||
+         resource.data.againstUserId == request.auth.uid ||
+         isAdmin());
+      
+      // Only admin can update (resolve)
+      allow update: if isAdmin();
+      
+      allow delete: if isAdmin();
+    }
+    
+    // Top-up Requests collection
+    match /topupRequests/{requestId} {
+      // Providers can create their own requests
+      allow create: if isProvider() && 
+        request.resource.data.providerId == request.auth.uid;
+      
+      // Provider can read their own, admin can read all
+      allow read: if isAuthenticated() && 
+        (resource.data.providerId == request.auth.uid || isAdmin());
+      
+      // Only admin can update (approve/reject)
+      allow update: if isAdmin();
+      
+      allow delete: if isAdmin();
+    }
+    
+    // Withdrawal Requests collection
+    match /withdrawalRequests/{requestId} {
+      // Providers can create their own requests
+      allow create: if isProvider() && 
+        request.resource.data.providerId == request.auth.uid;
+      
+      // Provider can read their own, admin can read all
+      allow read: if isAuthenticated() && 
+        (resource.data.providerId == request.auth.uid || isAdmin());
+      
+      // Only admin can update (process/reject)
+      allow update: if isAdmin();
+      
+      allow delete: if isAdmin();
+    }
+    
+    // Notifications collection
+    match /notifications/{userId}/messages/{messageId} {
+      // Users can only access their own notifications
+      allow read: if isOwner(userId);
+      allow create: if isAdmin() || 
+        (isProvider() && request.resource.data.recipientId == userId);
+      allow update: if isOwner(userId);
+      allow delete: if isOwner(userId) || isAdmin();
+    }
+  }
+}
