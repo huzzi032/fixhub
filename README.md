@@ -8,7 +8,7 @@ This project is now Firebase-free.
 
 - Firebase dependency removed from the app.
 - App authentication and user profile storage moved to local SQLite (`sqflite`) for zero-cost offline usage.
-- Added an optional deployable backend in [backend/](backend/) for Vercel using SQLite-compatible libSQL (Turso free tier).
+- Added an optional deployable backend in [backend/](backend/) for Vercel using Supabase Postgres.
 
 ## Features
 
@@ -40,7 +40,7 @@ This project is now Firebase-free.
 - Riverpod
 - GoRouter
 - Local database: SQLite (`sqflite`)
-- Optional cloud backend: Vercel Serverless + libSQL/Turso
+- Optional cloud backend: Vercel Serverless + Supabase Postgres
 
 ## Project Structure
 
@@ -105,10 +105,9 @@ npx vercel dev
 4. Deploy backend on Vercel with env vars:
 
 - `DATABASE_URL`
-- `DATABASE_AUTH_TOKEN`
 - `JWT_SECRET`
 
-Recommended free DB: Turso (SQLite-compatible libSQL).
+Recommended free DB: Supabase Postgres.
 
 ## Backend API Endpoints
 

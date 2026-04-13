@@ -65,8 +65,9 @@ export default async function handler(req, res) {
   if (role === 'customer') {
     await db.execute({
       sql: `
-        INSERT OR IGNORE INTO customers(user_id, saved_addresses, loyalty_points, total_orders_placed)
+        INSERT INTO customers(user_id, saved_addresses, loyalty_points, total_orders_placed)
         VALUES (?, '[]', 0, 0)
+        ON CONFLICT (user_id) DO NOTHING
       `,
       args: [uid],
     });
@@ -75,8 +76,9 @@ export default async function handler(req, res) {
   if (role === 'provider') {
     await db.execute({
       sql: `
-        INSERT OR IGNORE INTO providers(user_id, verification_status, wallet_balance, earnings_total, joined_at)
+        INSERT INTO providers(user_id, verification_status, wallet_balance, earnings_total, joined_at)
         VALUES (?, 'pending', 0, 0, ?)
+        ON CONFLICT (user_id) DO NOTHING
       `,
       args: [uid, now],
     });

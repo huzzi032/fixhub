@@ -7,8 +7,9 @@
     "dev": "vercel dev"
   },
   "dependencies": {
-    "@libsql/client": "^0.15.15",
+    "@supabase/supabase-js": "^2.57.2",
     "bcryptjs": "^2.4.3",
-    "jsonwebtoken": "^9.0.2"
+    "jsonwebtoken": "^9.0.2",
+    "pg": "^8.16.3"
   }
 }

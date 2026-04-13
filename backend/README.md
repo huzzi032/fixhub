@@ -1,12 +1,6 @@
-# FixHub Backend (Vercel + SQLite-Compatible)
+# FixHub Backend (Vercel + Supabase Postgres)
 
-This backend is designed for free deployment on Vercel using a SQLite-compatible database.
-
-## Why libSQL/Turso
-
-Vercel serverless functions do not provide persistent writable local disk, so plain local `sqlite3` files are not durable in production.
-
-Turso provides a free SQLite-compatible hosted database (`libSQL`) and works well with Vercel.
+This backend is designed for free deployment on Vercel using Supabase Postgres.
 
 ## Endpoints
 
@@ -24,11 +18,25 @@ Copy `.env.example` to `.env.local` for local development.
 
 Required for production:
 - `DATABASE_URL`
-- `DATABASE_AUTH_TOKEN`
 - `JWT_SECRET`
 
 Optional:
+- `DATABASE_SSL` (defaults to `true`)
+
+Optional:
 - `FIXHUB_DEV_OTP` (defaults to `123456`)
+
+## Supabase Connection Setup
+
+1. Open Supabase project settings and copy the Session Pooler connection string.
+2. URL-encode your password before placing it in `DATABASE_URL`.
+3. Keep SSL enabled (`DATABASE_SSL=true`) for production.
+
+Example with encoded password:
+
+```bash
+DATABASE_URL=postgresql://postgres:myPassword%21with%3Fchars@aws-0-your-region.pooler.supabase.com:6543/postgres
+```
 
 ## Local Run
 
