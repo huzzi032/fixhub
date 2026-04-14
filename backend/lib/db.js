@@ -85,12 +85,33 @@ export async function ensureSchema() {
       CREATE TABLE IF NOT EXISTS providers (
         user_id TEXT PRIMARY KEY,
         verification_status TEXT NOT NULL DEFAULT 'pending',
+        bio TEXT NOT NULL DEFAULT '',
+        skills TEXT NOT NULL DEFAULT '[]',
+        service_cities TEXT NOT NULL DEFAULT '[]',
+        hourly_rate_min INTEGER,
+        hourly_rate_max INTEGER,
         wallet_balance INTEGER NOT NULL DEFAULT 0,
         earnings_total INTEGER NOT NULL DEFAULT 0,
         joined_at BIGINT NOT NULL,
         FOREIGN KEY(user_id) REFERENCES users(uid) ON DELETE CASCADE
       )
     `);
+
+    await db.execute(
+      "ALTER TABLE providers ADD COLUMN IF NOT EXISTS bio TEXT NOT NULL DEFAULT ''",
+    );
+    await db.execute(
+      "ALTER TABLE providers ADD COLUMN IF NOT EXISTS skills TEXT NOT NULL DEFAULT '[]'",
+    );
+    await db.execute(
+      "ALTER TABLE providers ADD COLUMN IF NOT EXISTS service_cities TEXT NOT NULL DEFAULT '[]'",
+    );
+    await db.execute(
+      'ALTER TABLE providers ADD COLUMN IF NOT EXISTS hourly_rate_min INTEGER',
+    );
+    await db.execute(
+      'ALTER TABLE providers ADD COLUMN IF NOT EXISTS hourly_rate_max INTEGER',
+    );
 
     await db.execute(`
       CREATE TABLE IF NOT EXISTS otp_codes (
@@ -132,6 +153,7 @@ export async function ensureSchema() {
         title TEXT NOT NULL,
         description TEXT NOT NULL,
         category TEXT NOT NULL,
+        image_urls TEXT NOT NULL DEFAULT '[]',
         min_price INTEGER NOT NULL DEFAULT 0,
         max_price INTEGER NOT NULL DEFAULT 0,
         rating REAL NOT NULL DEFAULT 0,
@@ -140,6 +162,10 @@ export async function ensureSchema() {
         created_at BIGINT NOT NULL
       )
     `);
+
+    await db.execute(
+      "ALTER TABLE provider_services ADD COLUMN IF NOT EXISTS image_urls TEXT NOT NULL DEFAULT '[]'",
+    );
 
     await db.execute(`
       CREATE TABLE IF NOT EXISTS neighborhood_deals (

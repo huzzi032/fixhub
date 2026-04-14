@@ -1,8 +1,9 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import '../../../core/theme/app_theme.dart';
+
 import '../../../core/constants/app_constants.dart';
+import '../../../core/theme/app_theme.dart';
 
 class AuthLandingScreen extends StatelessWidget {
   const AuthLandingScreen({super.key});
@@ -16,8 +17,6 @@ class AuthLandingScreen extends StatelessWidget {
           child: Column(
             children: [
               const Spacer(),
-
-              // Logo
               Container(
                 width: 120,
                 height: 120,
@@ -32,8 +31,6 @@ class AuthLandingScreen extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 24),
-
-              // App Name
               const Text(
                 AppConstants.appName,
                 style: TextStyle(
@@ -42,8 +39,6 @@ class AuthLandingScreen extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 8),
-
-              // Tagline
               const Text(
                 AppConstants.appTagline,
                 style: TextStyle(
@@ -52,35 +47,36 @@ class AuthLandingScreen extends StatelessWidget {
                 ),
                 textAlign: TextAlign.center,
               ),
-
               const Spacer(),
-
-              // Continue with Email Button
               SizedBox(
                 width: double.infinity,
                 height: 56,
                 child: ElevatedButton.icon(
                   onPressed: () => context.push('/auth/email-signin'),
-                  icon: const Icon(Icons.email),
-                  label: const Text('Continue with Email'),
+                  icon: const Icon(Icons.login),
+                  label: const Text('Sign In'),
                 ),
               ),
               const SizedBox(height: 16),
-
-              // Create Account Button
               SizedBox(
                 width: double.infinity,
                 height: 56,
                 child: OutlinedButton.icon(
                   onPressed: () => context.push('/auth/email-signup'),
-                  icon: const Icon(Icons.person_add_alt_1),
-                  label: const Text('Create New Account'),
+                  icon: const Icon(Icons.person_add_alt_1_outlined),
+                  label: const Text('Sign Up'),
                 ),
               ),
-
+              const SizedBox(height: 10),
+              const Text(
+                'After sign up, choose Customer or Provider and complete your profile.',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: AppColors.onSurfaceVariant,
+                ),
+                textAlign: TextAlign.center,
+              ),
               const SizedBox(height: 24),
-
-              // Terms and Privacy
               RichText(
                 textAlign: TextAlign.center,
                 text: TextSpan(
@@ -100,7 +96,6 @@ class AuthLandingScreen extends StatelessWidget {
                       ),
                       recognizer: TapGestureRecognizer()
                         ..onTap = () {
-                          // Show Terms
                           _showTermsDialog(context);
                         },
                     ),
@@ -113,14 +108,12 @@ class AuthLandingScreen extends StatelessWidget {
                       ),
                       recognizer: TapGestureRecognizer()
                         ..onTap = () {
-                          // Show Privacy
                           _showPrivacyDialog(context);
                         },
                     ),
                   ],
                 ),
               ),
-
               const SizedBox(height: 16),
             ],
           ),
@@ -181,3 +174,4 @@ class AuthLandingScreen extends StatelessWidget {
     );
   }
 }
+

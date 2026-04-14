@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/auth/app_auth_user.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/router/app_router.dart';
@@ -49,6 +50,26 @@ class _RoleSelectionScreenState extends ConsumerState<RoleSelectionScreen> {
         } else if (role == UserRoles.provider) {
           context.goToProviderRegistration();
         }
+      }
+    } on AppAuthException catch (e) {
+      if (mounted && e.code == 'unauthorized') {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Session expired. Please sign in again.'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+        context.goToAuth();
+        return;
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: ${e.toString()}'),
+            backgroundColor: AppColors.error,
+          ),
+        );
       }
     } catch (e) {
       if (mounted) {

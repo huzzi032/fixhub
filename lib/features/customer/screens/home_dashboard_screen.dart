@@ -23,6 +23,13 @@ class HomeDashboardScreen extends ConsumerStatefulWidget {
 class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen> {
   int _locationRefreshTick = 0;
 
+  Future<void> _refreshDashboard() async {
+    if (!mounted) return;
+    setState(() {
+      _locationRefreshTick++;
+    });
+  }
+
   Future<void> _editLocation(String initialValue, String uid) async {
     final controller = TextEditingController(text: initialValue);
 
@@ -72,22 +79,26 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen> {
 
     return Scaffold(
       body: SafeArea(
-        child: CustomScrollView(
-          slivers: [
-            SliverToBoxAdapter(child: _buildAppBar(context)),
-            SliverToBoxAdapter(
-              child: _buildLocationBar(context, currentUser?.uid),
-            ),
-            SliverToBoxAdapter(child: _buildSearchBar(context)),
-            SliverToBoxAdapter(
-              child: _buildActiveBookingBanner(context, currentUser?.uid),
-            ),
-            SliverToBoxAdapter(child: _buildCategoriesSection(context)),
-            SliverToBoxAdapter(
-              child: _buildDealsSection(context, currentUser?.uid),
-            ),
-            const SliverPadding(padding: EdgeInsets.only(bottom: 80)),
-          ],
+        child: RefreshIndicator(
+          onRefresh: _refreshDashboard,
+          child: CustomScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            slivers: [
+              SliverToBoxAdapter(child: _buildAppBar(context)),
+              SliverToBoxAdapter(
+                child: _buildLocationBar(context, currentUser?.uid),
+              ),
+              SliverToBoxAdapter(child: _buildSearchBar(context)),
+              SliverToBoxAdapter(
+                child: _buildActiveBookingBanner(context, currentUser?.uid),
+              ),
+              SliverToBoxAdapter(child: _buildCategoriesSection(context)),
+              SliverToBoxAdapter(
+                child: _buildDealsSection(context, currentUser?.uid),
+              ),
+              const SliverPadding(padding: EdgeInsets.only(bottom: 80)),
+            ],
+          ),
         ),
       ),
       floatingActionButton: FloatingActionButton.extended(
@@ -109,6 +120,17 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen> {
       padding: const EdgeInsets.all(16),
       child: Row(
         children: [
+          IconButton(
+            onPressed: () {
+              if (Navigator.of(context).canPop()) {
+                Navigator.of(context).pop();
+                return;
+              }
+              context.goToAuth();
+            },
+            icon: const Icon(Icons.arrow_back_ios_new),
+            tooltip: 'Back',
+          ),
           Container(
             width: 40,
             height: 40,
@@ -247,6 +269,7 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen> {
     }
 
     return FutureBuilder<List<BookingModel>>(
+      key: ValueKey<int>(_locationRefreshTick),
       future: LocalBookingService.instance.getCustomerBookings(uid),
       builder: (context, snapshot) {
         final activeBookings = (snapshot.data ?? const <BookingModel>[])
@@ -420,6 +443,7 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen> {
     }
 
     return FutureBuilder<List<NeighborhoodDealItem>>(
+      key: ValueKey<int>(_locationRefreshTick),
       future: LocalMarketplaceService.instance
           .getFeaturedDeals(userId: uid, limit: 6),
       builder: (context, snapshot) {

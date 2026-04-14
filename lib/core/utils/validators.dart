@@ -103,6 +103,50 @@ class Validators {
       );
     }
 
+    if (password.contains(RegExp(r'\s'))) {
+      return const ValidationResult.invalid(
+        'Password must not contain spaces',
+      );
+    }
+
+    if (!RegExp(r'[A-Z]').hasMatch(password)) {
+      return const ValidationResult.invalid(
+        'Password must include at least one uppercase letter',
+      );
+    }
+
+    if (!RegExp(r'[a-z]').hasMatch(password)) {
+      return const ValidationResult.invalid(
+        'Password must include at least one lowercase letter',
+      );
+    }
+
+    if (!RegExp(r'[0-9]').hasMatch(password)) {
+      return const ValidationResult.invalid(
+        'Password must include at least one number',
+      );
+    }
+
+    if (!RegExp(r'[^A-Za-z0-9]').hasMatch(password)) {
+      return const ValidationResult.invalid(
+        'Password must include at least one special character',
+      );
+    }
+
+    return const ValidationResult.valid();
+  }
+
+  static ValidationResult validateSignInPassword(String password) {
+    if (password.isEmpty) {
+      return const ValidationResult.invalid('Password is required');
+    }
+
+    if (password.length > AppConstants.maxPasswordLength) {
+      return const ValidationResult.invalid(
+        'Password must not exceed ${AppConstants.maxPasswordLength} characters',
+      );
+    }
+
     return const ValidationResult.valid();
   }
 

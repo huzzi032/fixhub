@@ -173,13 +173,28 @@ class _BookingChatScreenState extends ConsumerState<BookingChatScreen> {
                   stream: LocalBookingService.instance
                       .watchBookingMessages(booking.bookingId),
                   builder: (context, messagesSnapshot) {
+                    if (messagesSnapshot.hasError) {
+                      return Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Text(
+                            messagesSnapshot.error.toString(),
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(color: AppColors.error),
+                          ),
+                        ),
+                      );
+                    }
+
                     final messages =
                         messagesSnapshot.data ?? const <BookingChatMessage>[];
 
-                    LocalBookingService.instance.markMessagesRead(
-                      bookingId: booking.bookingId,
-                      viewerId: user.uid,
-                    );
+                    if (messages.isNotEmpty) {
+                      LocalBookingService.instance.markMessagesRead(
+                        bookingId: booking.bookingId,
+                        viewerId: user.uid,
+                      );
+                    }
 
                     if (messages.isNotEmpty) {
                       _scrollToBottom();
@@ -269,6 +284,8 @@ class _ChatBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     final time =
         '${message.sentAt.hour.toString().padLeft(2, '0')}:${message.sentAt.minute.toString().padLeft(2, '0')}';
+    final senderLabel =
+        message.senderRole == 'provider' ? 'Provider' : 'Customer';
 
     return Align(
       alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
@@ -291,14 +308,39 @@ class _ChatBubble extends StatelessWidget {
           crossAxisAlignment:
               isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
           children: [
+            if (!isMine)
+              Text(
+                senderLabel,
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.onSurfaceVariant,
+                ),
+              ),
+            if (!isMine) const SizedBox(height: 2),
             Text(message.messageText),
             const SizedBox(height: 4),
-            Text(
-              time,
-              style: const TextStyle(
-                fontSize: 11,
-                color: AppColors.onSurfaceVariant,
-              ),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  time,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: AppColors.onSurfaceVariant,
+                  ),
+                ),
+                if (isMine) ...[
+                  const SizedBox(width: 6),
+                  Icon(
+                    message.isRead ? Icons.done_all : Icons.done,
+                    size: 13,
+                    color: message.isRead
+                        ? AppColors.primary
+                        : AppColors.onSurfaceVariant,
+                  ),
+                ],
+              ],
             ),
           ],
         ),

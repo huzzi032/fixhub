@@ -33,6 +33,11 @@ CREATE TABLE IF NOT EXISTS customers (
 CREATE TABLE IF NOT EXISTS providers (
   user_id TEXT PRIMARY KEY,
   verification_status TEXT NOT NULL DEFAULT 'pending',
+  bio TEXT NOT NULL DEFAULT '',
+  skills TEXT NOT NULL DEFAULT '[]',
+  service_cities TEXT NOT NULL DEFAULT '[]',
+  hourly_rate_min INTEGER,
+  hourly_rate_max INTEGER,
   wallet_balance INTEGER NOT NULL DEFAULT 0,
   earnings_total INTEGER NOT NULL DEFAULT 0,
   joined_at BIGINT NOT NULL,
@@ -74,6 +79,7 @@ CREATE TABLE IF NOT EXISTS provider_services (
   title TEXT NOT NULL,
   description TEXT NOT NULL,
   category TEXT NOT NULL,
+  image_urls TEXT NOT NULL DEFAULT '[]',
   min_price INTEGER NOT NULL DEFAULT 0,
   max_price INTEGER NOT NULL DEFAULT 0,
   rating REAL NOT NULL DEFAULT 0,
@@ -81,6 +87,14 @@ CREATE TABLE IF NOT EXISTS provider_services (
   is_active INTEGER NOT NULL DEFAULT 1,
   created_at BIGINT NOT NULL
 );
+
+ALTER TABLE providers ADD COLUMN IF NOT EXISTS bio TEXT NOT NULL DEFAULT '';
+ALTER TABLE providers ADD COLUMN IF NOT EXISTS skills TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE providers ADD COLUMN IF NOT EXISTS service_cities TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE providers ADD COLUMN IF NOT EXISTS hourly_rate_min INTEGER;
+ALTER TABLE providers ADD COLUMN IF NOT EXISTS hourly_rate_max INTEGER;
+
+ALTER TABLE provider_services ADD COLUMN IF NOT EXISTS image_urls TEXT NOT NULL DEFAULT '[]';
 
 CREATE TABLE IF NOT EXISTS neighborhood_deals (
   deal_id TEXT PRIMARY KEY,

@@ -2,15 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 class AppColors {
-  // Primary - Deep Orange
-  static const Color primary = Color(0xFFE65100);
-  static const Color primaryLight = Color(0xFFFF833A);
-  static const Color primaryDark = Color(0xFFAC1900);
+  // Primary - Modern Blue
+  static const Color primary = Color(0xFF0B63F6);
+  static const Color primaryLight = Color(0xFF4D8DFF);
+  static const Color primaryDark = Color(0xFF003EA8);
 
-  // Secondary - Teal
-  static const Color secondary = Color(0xFF00897B);
-  static const Color secondaryLight = Color(0xFF4CBFA9);
-  static const Color secondaryDark = Color(0xFF005B4F);
+  // Secondary - Fresh Teal
+  static const Color secondary = Color(0xFF0F9D8A);
+  static const Color secondaryLight = Color(0xFF5FCFBF);
+  static const Color secondaryDark = Color(0xFF0A6D5E);
 
   // Semantic Colors
   static const Color success = Color(0xFF4CAF50);
@@ -23,12 +23,12 @@ class AppColors {
   static const Color sosRedLight = Color(0xFFFF6659);
 
   // Neutrals
-  static const Color background = Color(0xFFF5F5F5);
+  static const Color background = Color(0xFFF4F6FB);
   static const Color surface = Color(0xFFFFFFFF);
-  static const Color onSurface = Color(0xFF212121);
-  static const Color onSurfaceVariant = Color(0xFF757575);
-  static const Color outline = Color(0xFFBDBDBD);
-  static const Color outlineVariant = Color(0xFFE0E0E0);
+  static const Color onSurface = Color(0xFF111827);
+  static const Color onSurfaceVariant = Color(0xFF6B7280);
+  static const Color outline = Color(0xFFC7CEDB);
+  static const Color outlineVariant = Color(0xFFE6EAF2);
 
   // Status Colors
   static const Color pending = Color(0xFFFF9800);
@@ -62,26 +62,31 @@ class AppTheme {
       ),
       scaffoldBackgroundColor: AppColors.background,
       appBarTheme: const AppBarTheme(
-        centerTitle: true,
+        centerTitle: false,
         elevation: 0,
+        scrolledUnderElevation: 0,
+        surfaceTintColor: Colors.transparent,
         backgroundColor: AppColors.surface,
         foregroundColor: AppColors.onSurface,
         systemOverlayStyle: SystemUiOverlayStyle.dark,
       ),
       cardTheme: CardThemeData(
-        elevation: 2,
+        color: AppColors.surface,
+        elevation: 1,
+        margin: EdgeInsets.zero,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(14),
+          side: const BorderSide(color: AppColors.outlineVariant),
         ),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
           backgroundColor: AppColors.primary,
           foregroundColor: Colors.white,
-          elevation: 2,
+          elevation: 0,
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(14),
           ),
           textStyle: const TextStyle(
             fontSize: 16,
@@ -92,10 +97,10 @@ class AppTheme {
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
           foregroundColor: AppColors.primary,
-          side: const BorderSide(color: AppColors.primary, width: 1.5),
+          side: const BorderSide(color: AppColors.outline, width: 1.2),
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(14),
           ),
           textStyle: const TextStyle(
             fontSize: 16,
@@ -115,27 +120,27 @@ class AppTheme {
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: AppColors.surface,
+        fillColor: const Color(0xFFFBFCFF),
         contentPadding:
             const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(14),
           borderSide: const BorderSide(color: AppColors.outline),
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(14),
           borderSide: const BorderSide(color: AppColors.outline),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(14),
           borderSide: const BorderSide(color: AppColors.primary, width: 2),
         ),
         errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(14),
           borderSide: const BorderSide(color: AppColors.error),
         ),
         focusedErrorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(14),
           borderSide: const BorderSide(color: AppColors.error, width: 2),
         ),
         prefixIconColor: AppColors.onSurfaceVariant,
@@ -155,7 +160,8 @@ class AppTheme {
         selectedItemColor: AppColors.primary,
         unselectedItemColor: AppColors.onSurfaceVariant,
         type: BottomNavigationBarType.fixed,
-        elevation: 8,
+        elevation: 2,
+        showUnselectedLabels: true,
       ),
       floatingActionButtonTheme: FloatingActionButtonThemeData(
         backgroundColor: AppColors.primary,

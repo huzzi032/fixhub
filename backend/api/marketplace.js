@@ -52,6 +52,31 @@ function toDouble(value, fallback = 0) {
   return fallback;
 }
 
+function parseJsonStringList(value) {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => String(item || '').trim())
+      .filter((item) => item.length > 0);
+  }
+
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(value);
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    return parsed
+      .map((item) => String(item || '').trim())
+      .filter((item) => item.length > 0);
+  } catch (_) {
+    return [];
+  }
+}
+
 function normalizeCategory(input) {
   const value = String(input || '').trim().toLowerCase().replaceAll(' ', '_');
 
@@ -79,6 +104,8 @@ function normalizeCategory(input) {
 }
 
 function normalizeServiceRow(row) {
+  const imageUrls = parseJsonStringList(row.image_urls);
+
   return {
     service_id: String(row.service_id || ''),
     provider_id: row.provider_id == null ? '' : String(row.provider_id),
@@ -86,6 +113,7 @@ function normalizeServiceRow(row) {
     title: String(row.title || ''),
     description: String(row.description || ''),
     category: String(row.category || 'other'),
+    image_urls: imageUrls,
     min_price: toInt(row.min_price),
     max_price: toInt(row.max_price),
     rating: toDouble(row.rating),
@@ -114,6 +142,21 @@ function normalizeDealRow(row) {
     expires_at: toInt(row.expires_at),
     participants_count: toInt(row.participants_count),
     has_joined: toInt(row.has_joined),
+  };
+}
+
+function normalizeProviderReviewRow(row) {
+  return {
+    review_id: String(row.review_id || ''),
+    booking_id: String(row.booking_id || ''),
+    customer_id: row.customer_id == null ? null : String(row.customer_id),
+    customer_name:
+      row.customer_name == null ? 'Customer' : String(row.customer_name),
+    customer_photo_url:
+      row.customer_photo_url == null ? null : String(row.customer_photo_url),
+    rating: toInt(row.rating),
+    comment: row.comment == null ? '' : String(row.comment),
+    created_at: toInt(row.created_at),
   };
 }
 
@@ -206,43 +249,45 @@ export default async function handler(req, res) {
         .map((item) => normalizeCategory(item))
         .filter((item, index, arr) => item && arr.indexOf(item) === index);
 
-      const whereClauses = ['is_active = 1'];
+      const whereClauses = ['s.is_active = 1'];
       const whereArgs = [];
 
       if (query) {
         const like = `%${query}%`;
         whereClauses.push(
-          '(LOWER(title) LIKE ? OR LOWER(description) LIKE ? OR LOWER(provider_name) LIKE ? OR LOWER(category) LIKE ?)',
+          "(LOWER(s.title) LIKE ? OR LOWER(s.description) LIKE ? OR LOWER(COALESCE(u.name, s.provider_name)) LIKE ? OR LOWER(s.category) LIKE ? OR LOWER(COALESCE(p.skills, '')) LIKE ? OR LOWER(COALESCE(p.bio, '')) LIKE ?)",
         );
-        whereArgs.push(like, like, like, like);
+        whereArgs.push(like, like, like, like, like, like);
       }
 
       if (categories.length > 0) {
         const placeholders = new Array(categories.length).fill('?').join(', ');
-        whereClauses.push(`category IN (${placeholders})`);
+        whereClauses.push(`s.category IN (${placeholders})`);
         whereArgs.push(...categories);
       }
 
-      whereClauses.push('max_price >= ?');
+      whereClauses.push('s.max_price >= ?');
       whereArgs.push(minPrice);
-      whereClauses.push('min_price <= ?');
+      whereClauses.push('s.min_price <= ?');
       whereArgs.push(maxPrice);
-      whereClauses.push('rating >= ?');
+      whereClauses.push('s.rating >= ?');
       whereArgs.push(minRating);
 
       const orderBy =
         sortBy === 'rating'
-          ? 'rating DESC, review_count DESC'
+          ? 's.rating DESC, s.review_count DESC'
           : sortBy === 'price_low'
-            ? 'min_price ASC'
+            ? 's.min_price ASC'
             : sortBy === 'price_high'
-              ? 'max_price DESC'
-              : 'created_at DESC';
+              ? 's.max_price DESC'
+              : 's.created_at DESC';
 
       const result = await db.execute({
         sql: `
-          SELECT *
-          FROM provider_services
+          SELECT s.*, COALESCE(u.name, s.provider_name) AS provider_name
+          FROM provider_services s
+          LEFT JOIN providers p ON p.user_id = s.provider_id
+          LEFT JOIN users u ON u.uid = s.provider_id
           WHERE ${whereClauses.join(' AND ')}
           ORDER BY ${orderBy}
         `,
@@ -284,6 +329,135 @@ export default async function handler(req, res) {
 
       return sendJson(res, 200, {
         services: result.rows.map(normalizeServiceRow),
+      });
+    }
+
+    if (action === 'getProviderPublicProfile') {
+      const providerId = getQueryValue(req, 'providerId');
+      if (!providerId) {
+        return sendJson(res, 400, { error: 'providerId is required.' });
+      }
+
+      const profileResult = await db.execute({
+        sql: `
+          SELECT
+            u.uid,
+            u.name,
+            u.profile_photo_url,
+            p.bio,
+            p.skills,
+            p.service_cities,
+            p.hourly_rate_min,
+            p.hourly_rate_max,
+            p.verification_status,
+            p.joined_at
+          FROM users u
+          LEFT JOIN providers p ON p.user_id = u.uid
+          WHERE u.uid = ?
+          LIMIT 1
+        `,
+        args: [providerId],
+      });
+
+      if (profileResult.rows.length === 0) {
+        return sendJson(res, 200, {
+          profile: null,
+          services: [],
+          reviews: [],
+        });
+      }
+
+      const servicesResult = await db.execute({
+        sql: `
+          SELECT *
+          FROM provider_services
+          WHERE provider_id = ? AND is_active = 1
+          ORDER BY created_at DESC
+        `,
+        args: [providerId],
+      });
+
+      const reviewsResult = await db.execute({
+        sql: `
+          SELECT
+            r.review_id,
+            r.booking_id,
+            r.customer_id,
+            r.rating,
+            r.comment,
+            r.created_at,
+            COALESCE(u.name, 'Customer') AS customer_name,
+            u.profile_photo_url AS customer_photo_url
+          FROM reviews r
+          LEFT JOIN users u ON u.uid = r.customer_id
+          WHERE r.provider_id = ?
+          ORDER BY r.created_at DESC
+          LIMIT 50
+        `,
+        args: [providerId],
+      });
+
+      const reviewSummaryResult = await db.execute({
+        sql: `
+          SELECT
+            COALESCE(AVG(rating), 0)::FLOAT AS average_rating,
+            COUNT(*)::INT AS total_reviews
+          FROM reviews
+          WHERE provider_id = ?
+        `,
+        args: [providerId],
+      });
+
+      const jobsSummaryResult = await db.execute({
+        sql: `
+          SELECT
+            SUM(CASE WHEN status IN ('completed', 'paid') THEN 1 ELSE 0 END)::INT AS completed_jobs
+          FROM bookings
+          WHERE provider_id = ?
+        `,
+        args: [providerId],
+      });
+
+      const profileRow = profileResult.rows[0];
+      const services = servicesResult.rows.map(normalizeServiceRow);
+      const averageRating = toDouble(
+        reviewSummaryResult.rows[0]?.average_rating,
+        0,
+      );
+      const totalReviews = toInt(reviewSummaryResult.rows[0]?.total_reviews, 0);
+      const completedJobs = toInt(jobsSummaryResult.rows[0]?.completed_jobs, 0);
+
+      return sendJson(res, 200, {
+        profile: {
+          provider_id: String(profileRow.uid || providerId),
+          display_name: profileRow.name ? String(profileRow.name) : 'Provider',
+          profile_photo_url:
+            profileRow.profile_photo_url == null
+              ? null
+              : String(profileRow.profile_photo_url),
+          bio: profileRow.bio == null ? '' : String(profileRow.bio),
+          skills: parseJsonStringList(profileRow.skills),
+          service_cities: parseJsonStringList(profileRow.service_cities),
+          hourly_rate_min:
+            profileRow.hourly_rate_min == null
+              ? null
+              : toInt(profileRow.hourly_rate_min),
+          hourly_rate_max:
+            profileRow.hourly_rate_max == null
+              ? null
+              : toInt(profileRow.hourly_rate_max),
+          verification_status: profileRow.verification_status
+            ? String(profileRow.verification_status)
+            : 'pending',
+          joined_at:
+            profileRow.joined_at == null ? null : toInt(profileRow.joined_at),
+          average_rating: averageRating,
+          total_reviews: totalReviews,
+          completed_jobs: completedJobs,
+          active_services: services.length,
+        },
+        services,
+        reviews: reviewsResult.rows.map(normalizeProviderReviewRow),
       });
     }
 
@@ -374,6 +548,7 @@ export default async function handler(req, res) {
     const title = String(body.title || '').trim();
     const description = String(body.description || '').trim();
     const category = normalizeCategory(body.category);
+    const imageUrls = parseJsonStringList(body.imageUrls).slice(0, 5);
     const minPrice = toInt(body.minPrice);
     const maxPrice = toInt(body.maxPrice);
     const isActive = body.isActive == null ? true : Boolean(body.isActive);
@@ -388,14 +563,15 @@ export default async function handler(req, res) {
       sql: `
         INSERT INTO provider_services(
           service_id, provider_id, provider_name, title, description,
-          category, min_price, max_price, rating, review_count, is_active, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 4.0, 0, ?, ?)
+          category, image_urls, min_price, max_price, rating, review_count, is_active, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 4.0, 0, ?, ?)
         ON CONFLICT (service_id) DO UPDATE SET
           provider_id = excluded.provider_id,
           provider_name = excluded.provider_name,
           title = excluded.title,
           description = excluded.description,
           category = excluded.category,
+          image_urls = excluded.image_urls,
           min_price = excluded.min_price,
           max_price = excluded.max_price,
           is_active = excluded.is_active
@@ -407,6 +583,7 @@ export default async function handler(req, res) {
         title,
         description,
         category,
+        JSON.stringify(imageUrls),
         minPrice,
         maxPrice,
         isActive ? 1 : 0,

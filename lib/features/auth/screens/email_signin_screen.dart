@@ -201,7 +201,8 @@ class _EmailSignInScreenState extends ConsumerState<EmailSignInScreen> {
                     ),
                   ),
                   validator: (value) {
-                    final result = Validators.validatePassword(value ?? '');
+                    final result =
+                        Validators.validateSignInPassword(value ?? '');
                     return result.error;
                   },
                 ),

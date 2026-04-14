@@ -37,22 +37,115 @@ function toInt(value, fallback = 0) {
   return fallback;
 }
 
+function parseJsonStringList(value) {
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(value);
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    return parsed
+      .map((item) => String(item || '').trim().toLowerCase())
+      .filter((item) => item.length > 0);
+  } catch (_) {
+    return [];
+  }
+}
+
+function normalizeServiceCategory(input) {
+  const value = String(input || '').trim().toLowerCase().replaceAll(' ', '_');
+
+  const aliases = {
+    ac: 'ac_repair',
+    acrepair: 'ac_repair',
+    air_conditioning: 'ac_repair',
+    carmechanic: 'car_mechanic',
+    mechanic: 'car_mechanic',
+  };
+
+  return aliases[value] || value;
+}
+
+function categoriesFromSkills(skills) {
+  const matches = new Set();
+
+  for (const skill of skills) {
+    const normalized = normalizeServiceCategory(skill);
+
+    if (normalized.includes('plumb')) {
+      matches.add('plumber');
+    }
+    if (normalized.includes('electric')) {
+      matches.add('electrician');
+    }
+    if (normalized.includes('carpen')) {
+      matches.add('carpenter');
+    }
+    if (normalized.includes('paint')) {
+      matches.add('painter');
+    }
+    if (
+      normalized.includes('ac') ||
+      normalized.includes('cool') ||
+      normalized.includes('hvac')
+    ) {
+      matches.add('ac_repair');
+    }
+    if (
+      normalized.includes('car') ||
+      normalized.includes('vehicle') ||
+      normalized.includes('mechanic')
+    ) {
+      matches.add('car_mechanic');
+    }
+    if (normalized.includes('clean')) {
+      matches.add('cleaning');
+    }
+
+    // If user already typed exact category keys, keep them.
+    if (
+      normalized === 'plumber' ||
+      normalized === 'electrician' ||
+      normalized === 'carpenter' ||
+      normalized === 'painter' ||
+      normalized === 'car_mechanic' ||
+      normalized === 'ac_repair' ||
+      normalized === 'cleaning' ||
+      normalized === 'other'
+    ) {
+      matches.add(normalized);
+    }
+  }
+
+  return matches;
+}
+
 function normalizeBookingRow(row) {
+  const providerIdRaw =
+    row.provider_id == null ? '' : String(row.provider_id).trim();
+  const serviceIdRaw = row.service_id == null ? '' : String(row.service_id).trim();
+  const statusRaw = String(row.status || 'pending').trim();
+  const paymentStatusRaw = String(row.payment_status || 'pending').trim();
+
   return {
     booking_id: String(row.booking_id || ''),
     customer_id: String(row.customer_id || ''),
-    provider_id: row.provider_id == null ? null : String(row.provider_id),
-    service_id: row.service_id == null ? null : String(row.service_id),
+    provider_id: providerIdRaw.length > 0 ? providerIdRaw : null,
+    service_id: serviceIdRaw.length > 0 ? serviceIdRaw : null,
     service_category: String(row.service_category || 'other'),
     issue_title: String(row.issue_title || ''),
     issue_description: String(row.issue_description || ''),
     address: String(row.address || ''),
     scheduled_at: toInt(row.scheduled_at),
     created_at: toInt(row.created_at),
-    status: String(row.status || 'pending'),
+    status: statusRaw.length > 0 ? statusRaw : 'pending',
     is_sos: toInt(row.is_sos),
     agreed_price: row.agreed_price == null ? null : toInt(row.agreed_price),
-    payment_status: String(row.payment_status || 'pending'),
+    payment_status: paymentStatusRaw.length > 0 ? paymentStatusRaw : 'pending',
     provider_note: row.provider_note == null ? null : String(row.provider_note),
     customer_name: row.customer_name == null ? null : String(row.customer_name),
     provider_name: row.provider_name == null ? null : String(row.provider_name),
@@ -94,6 +187,27 @@ async function getBookingByIdInternal(bookingId) {
   return normalizeBookingRow(result.rows[0]);
 }
 
+async function isServiceOwnedByProvider(booking, providerId) {
+  const normalizedProviderId = String(providerId || '').trim();
+  const serviceId = booking?.service_id == null ? '' : String(booking.service_id).trim();
+
+  if (!normalizedProviderId || !serviceId) {
+    return false;
+  }
+
+  const result = await db.execute({
+    sql: 'SELECT provider_id FROM provider_services WHERE service_id = ? LIMIT 1',
+    args: [serviceId],
+  });
+
+  if (result.rows.length === 0) {
+    return false;
+  }
+
+  const serviceProviderId = String(result.rows[0].provider_id || '').trim();
+  return serviceProviderId.length > 0 && serviceProviderId === normalizedProviderId;
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'GET' && req.method !== 'POST') {
     return methodNotAllowed(res, 'GET/POST');
@@ -113,7 +227,7 @@ export default async function handler(req, res) {
     return sendJson(res, 401, { error: 'Invalid authorization token.' });
   }
 
-  const authUid = String(decoded.uid || '');
+  const authUid = String(decoded.uid || '').trim();
   if (!authUid) {
     return sendJson(res, 401, { error: 'Invalid token payload.' });
   }
@@ -132,8 +246,19 @@ export default async function handler(req, res) {
         return sendJson(res, 404, { error: 'Booking not found.' });
       }
 
-      if (booking.customer_id !== authUid && booking.provider_id !== authUid) {
-        return sendJson(res, 403, { error: 'Forbidden for current user.' });
+      const isOwner =
+        booking.customer_id === authUid || booking.provider_id === authUid;
+      const isServiceOwner = !isOwner
+        ? await isServiceOwnedByProvider(booking, authUid)
+        : false;
+
+      if (!isOwner && !isServiceOwner) {
+        const canViewUnassignedLead =
+          booking.provider_id == null && booking.status === 'pending';
+
+        if (!canViewUnassignedLead) {
+          return sendJson(res, 403, { error: 'Forbidden for current user.' });
+        }
       }
 
       return sendJson(res, 200, { booking });
@@ -203,8 +328,31 @@ export default async function handler(req, res) {
         `,
       });
 
+      const providerResult = await db.execute({
+        sql: 'SELECT skills FROM providers WHERE user_id = ? LIMIT 1',
+        args: [authUid],
+      });
+
+      const skillList =
+        providerResult.rows.length > 0
+          ? parseJsonStringList(String(providerResult.rows[0].skills || '[]'))
+          : [];
+
+      const categoryMatches = categoriesFromSkills(skillList);
+      const normalizedBookings = result.rows.map(normalizeBookingRow);
+      let bookings = normalizedBookings;
+
+      if (categoryMatches.size > 0) {
+        bookings = normalizedBookings.filter((booking) => {
+          const bookingCategory = normalizeServiceCategory(
+            booking.service_category,
+          );
+          return categoryMatches.has(bookingCategory);
+        });
+      }
+
       return sendJson(res, 200, {
-        bookings: result.rows.map(normalizeBookingRow),
+        bookings,
       });
     }
 
@@ -318,10 +466,15 @@ export default async function handler(req, res) {
     const issueDescription = String(body.issueDescription || '').trim();
     const address = String(body.address || '').trim();
     const scheduledAt = toInt(body.scheduledAt);
-    const serviceId = body.serviceId == null ? null : String(body.serviceId);
+    const serviceId =
+      body.serviceId == null ? null : String(body.serviceId).trim();
     const customerName =
       body.customerName == null ? null : String(body.customerName);
     const isSos = Boolean(body.isSOS);
+
+    let bookingProviderId = null;
+    let bookingProviderName = null;
+    let resolvedCategory = normalizeServiceCategory(serviceCategory);
 
     if (!requireSameUser(res, authUid, customerId)) {
       return;
@@ -340,6 +493,44 @@ export default async function handler(req, res) {
       });
     }
 
+    if (serviceId) {
+      const serviceResult = await db.execute({
+        sql: `
+          SELECT provider_id, provider_name, category, is_active
+          FROM provider_services
+          WHERE service_id = ?
+          LIMIT 1
+        `,
+        args: [serviceId],
+      });
+
+      if (serviceResult.rows.length === 0) {
+        return sendJson(res, 404, { error: 'Selected service not found.' });
+      }
+
+      const serviceRow = serviceResult.rows[0];
+      if (toInt(serviceRow.is_active, 1) !== 1) {
+        return sendJson(res, 400, {
+          error: 'Selected service is currently not available.',
+        });
+      }
+
+      const providerIdRaw =
+        serviceRow.provider_id == null ? '' : String(serviceRow.provider_id).trim();
+      const providerNameRaw =
+        serviceRow.provider_name == null
+          ? ''
+          : String(serviceRow.provider_name).trim();
+
+      bookingProviderId = providerIdRaw.length > 0 ? providerIdRaw : null;
+      bookingProviderName =
+        providerNameRaw.length > 0 ? providerNameRaw : null;
+
+      resolvedCategory = normalizeServiceCategory(
+        String(serviceRow.category || resolvedCategory),
+      );
+    }
+
     await db.execute({
       sql: `
         INSERT INTO bookings(
@@ -347,13 +538,14 @@ export default async function handler(req, res) {
           issue_title, issue_description, address, scheduled_at, created_at,
           status, is_sos, agreed_price, payment_status, provider_note,
           customer_name, provider_name
-        ) VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, NULL, 'pending', NULL, ?, NULL)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, NULL, 'pending', NULL, ?, ?)
       `,
       args: [
         bookingId,
         customerId,
+        bookingProviderId,
         serviceId,
-        serviceCategory,
+        resolvedCategory,
         issueTitle,
         issueDescription,
         address,
@@ -361,6 +553,7 @@ export default async function handler(req, res) {
         Date.now(),
         isSos ? 1 : 0,
         customerName,
+        bookingProviderName,
       ],
     });
 
@@ -386,18 +579,85 @@ export default async function handler(req, res) {
       return;
     }
 
-    await db.execute({
-      sql: `
-        UPDATE bookings
-        SET provider_id = ?,
-            provider_name = ?,
-            agreed_price = ?,
-            provider_note = ?,
-            status = 'accepted'
-        WHERE booking_id = ?
-      `,
-      args: [providerId, providerName, quoteAmount, providerNote, bookingId],
-    });
+    const booking = await getBookingByIdInternal(bookingId);
+    if (!booking) {
+      return sendJson(res, 404, { error: 'Booking not found.' });
+    }
+
+    const bookingStatus = String(booking.status || '').trim().toLowerCase();
+    const assignedProviderId =
+      booking.provider_id == null ? null : String(booking.provider_id).trim();
+    const isServiceBackfillPending =
+      bookingStatus === 'pending' &&
+      assignedProviderId != null &&
+      assignedProviderId !== providerId &&
+      (await isServiceOwnedByProvider(booking, providerId));
+
+    if (assignedProviderId && assignedProviderId !== providerId && !isServiceBackfillPending) {
+      return sendJson(res, 409, { error: 'This lead has already been accepted.' });
+    }
+
+    const isPendingLead =
+      !assignedProviderId && (bookingStatus === '' || bookingStatus === 'pending');
+    const isUpdateBySameProvider =
+      assignedProviderId === providerId || isServiceBackfillPending;
+
+    if (!isPendingLead && !isUpdateBySameProvider) {
+      return sendJson(res, 409, {
+        error: 'This lead is no longer available.',
+      });
+    }
+
+    if (isServiceBackfillPending) {
+      await db.execute({
+        sql: `
+          UPDATE bookings
+          SET provider_id = ?,
+              provider_name = ?,
+              agreed_price = ?,
+              provider_note = ?,
+              status = 'accepted'
+          WHERE booking_id = ? AND status = 'pending'
+        `,
+        args: [
+          providerId,
+          providerName,
+          quoteAmount,
+          providerNote,
+          bookingId,
+        ],
+      });
+    } else {
+      await db.execute({
+        sql: `
+          UPDATE bookings
+          SET provider_id = ?,
+              provider_name = ?,
+              agreed_price = ?,
+              provider_note = ?,
+              status = 'accepted'
+          WHERE booking_id = ?
+            AND (
+              provider_id IS NULL OR
+              provider_id = '' OR
+              provider_id = ?
+            )
+        `,
+        args: [
+          providerId,
+          providerName,
+          quoteAmount,
+          providerNote,
+          bookingId,
+          providerId,
+        ],
+      });
+    }
+
+    const updatedBooking = await getBookingByIdInternal(bookingId);
+    if (!updatedBooking || updatedBooking.provider_id !== providerId) {
+      return sendJson(res, 409, { error: 'This lead has already been accepted.' });
+    }
 
     return sendJson(res, 200, { message: 'Lead accepted.' });
   }

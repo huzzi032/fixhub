@@ -20,7 +20,14 @@ class ProviderDashboardScreen extends ConsumerStatefulWidget {
 
 class _ProviderDashboardScreenState
     extends ConsumerState<ProviderDashboardScreen> {
-  int _onlineRefreshTick = 0;
+  int _refreshTick = 0;
+
+  Future<void> _refreshDashboard() async {
+    if (!mounted) return;
+    setState(() {
+      _refreshTick++;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -28,21 +35,24 @@ class _ProviderDashboardScreenState
 
     return Scaffold(
       body: SafeArea(
-        child: CustomScrollView(
-          slivers: [
-            SliverToBoxAdapter(child: _buildAppBar(context)),
-            SliverToBoxAdapter(
-              child: _buildOnlineToggle(context, currentUser?.uid),
-            ),
-            SliverToBoxAdapter(
-              child: _buildSummaryCards(context, currentUser?.uid),
-            ),
-            SliverToBoxAdapter(child: _buildIncomingLeads(context)),
-            SliverToBoxAdapter(
-              child: _buildActiveJobs(context, currentUser?.uid),
-            ),
-            const SliverPadding(padding: EdgeInsets.only(bottom: 80)),
-          ],
+        child: RefreshIndicator(
+          onRefresh: _refreshDashboard,
+          child: CustomScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            slivers: [
+              SliverToBoxAdapter(child: _buildAppBar(context)),
+              SliverToBoxAdapter(
+                child: _buildSummaryCards(context, currentUser?.uid),
+              ),
+              SliverToBoxAdapter(
+                child: _buildIncomingLeads(context, currentUser?.uid),
+              ),
+              SliverToBoxAdapter(
+                child: _buildActiveJobs(context, currentUser?.uid),
+              ),
+              const SliverPadding(padding: EdgeInsets.only(bottom: 80)),
+            ],
+          ),
         ),
       ),
       bottomNavigationBar: _buildBottomNav(context, 0),
@@ -54,6 +64,17 @@ class _ProviderDashboardScreenState
       padding: const EdgeInsets.all(16),
       child: Row(
         children: [
+          IconButton(
+            onPressed: () {
+              if (Navigator.of(context).canPop()) {
+                Navigator.of(context).pop();
+                return;
+              }
+              context.goToAuth();
+            },
+            icon: const Icon(Icons.arrow_back_ios_new),
+            tooltip: 'Back',
+          ),
           Container(
             width: 40,
             height: 40,
@@ -63,25 +84,40 @@ class _ProviderDashboardScreenState
             ),
             child: const Icon(Icons.handyman, color: AppColors.primary),
           ),
-          const SizedBox(width: 12),
-          const Text(
-            'Provider Dashboard',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          const SizedBox(width: 10),
+          const Expanded(
+            child: Text(
+              'Provider Dashboard',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
           ),
-          const Spacer(),
           IconButton(
             onPressed: () => context.goToCreateDeal(),
+            constraints: const BoxConstraints.tightFor(width: 40, height: 40),
+            padding: EdgeInsets.zero,
             icon: const Icon(Icons.local_offer_outlined),
+          ),
+          IconButton(
+            onPressed: () => context.goToProviderSOSRequests(),
+            constraints: const BoxConstraints.tightFor(width: 40, height: 40),
+            padding: EdgeInsets.zero,
+            icon: const Icon(Icons.sos, color: AppColors.sosRed),
+            tooltip: 'SOS Requests',
           ),
           Stack(
             children: [
               IconButton(
                 onPressed: () => context.goToNotifications(),
+                constraints:
+                    const BoxConstraints.tightFor(width: 40, height: 40),
+                padding: EdgeInsets.zero,
                 icon: const Icon(Icons.notifications_outlined),
               ),
               Positioned(
-                right: 8,
-                top: 8,
+                right: 6,
+                top: 6,
                 child: Container(
                   width: 8,
                   height: 8,
@@ -98,95 +134,13 @@ class _ProviderDashboardScreenState
     );
   }
 
-  Widget _buildOnlineToggle(BuildContext context, String? providerId) {
-    if (providerId == null) {
-      return const SizedBox.shrink();
-    }
-
-    return FutureBuilder<bool>(
-      key: ValueKey<int>(_onlineRefreshTick),
-      future: LocalSettingsService.instance.getProviderOnline(providerId),
-      builder: (context, snapshot) {
-        final isOnline = snapshot.data ?? true;
-
-        return Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: isOnline
-                  ? AppColors.success.withValues(alpha: 0.1)
-                  : AppColors.background,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: isOnline ? AppColors.success : AppColors.outline,
-              ),
-            ),
-            child: Row(
-              children: [
-                Container(
-                  width: 16,
-                  height: 16,
-                  decoration: BoxDecoration(
-                    color: isOnline
-                        ? AppColors.success
-                        : AppColors.onSurfaceVariant,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        isOnline ? 'You are Online' : 'You are Offline',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: isOnline
-                              ? AppColors.success
-                              : AppColors.onSurface,
-                        ),
-                      ),
-                      Text(
-                        isOnline
-                            ? 'You will receive new job requests'
-                            : 'You won\'t receive new job requests',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: AppColors.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Switch(
-                  value: isOnline,
-                  onChanged: (value) async {
-                    await LocalSettingsService.instance
-                        .setProviderOnline(providerId, value);
-                    if (!mounted) return;
-                    setState(() {
-                      _onlineRefreshTick++;
-                    });
-                  },
-                  activeThumbColor: AppColors.success,
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
   Widget _buildSummaryCards(BuildContext context, String? providerId) {
     if (providerId == null) {
       return const SizedBox.shrink();
     }
 
     return FutureBuilder<ProviderEarningsSummary>(
+      key: ValueKey<int>(_refreshTick),
       future: LocalBookingService.instance.getProviderEarnings(providerId),
       builder: (context, snapshot) {
         final summary = snapshot.data;
@@ -231,11 +185,16 @@ class _ProviderDashboardScreenState
     );
   }
 
-  Widget _buildIncomingLeads(BuildContext context) {
-    return FutureBuilder<List<BookingModel>>(
-      future: LocalBookingService.instance.getIncomingLeads(),
+  Widget _buildIncomingLeads(BuildContext context, String? providerId) {
+    if (providerId == null) {
+      return const SizedBox.shrink();
+    }
+
+    return FutureBuilder<bool>(
+      key: ValueKey<String>('provider-online-$providerId-$_refreshTick'),
+      future: LocalSettingsService.instance.getProviderOnline(providerId),
       builder: (context, snapshot) {
-        final leads = snapshot.data ?? const <BookingModel>[];
+        final isOnline = snapshot.data ?? true;
 
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Padding(
@@ -244,46 +203,97 @@ class _ProviderDashboardScreenState
           );
         }
 
-        if (leads.isEmpty) {
+        if (!isOnline) {
           return const Padding(
             padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: EmptyStateWidget(
-              title: 'No Incoming Leads',
-              subtitle: 'New customer requests will appear here.',
-              icon: Icons.notifications_none,
+              title: 'You Are Offline',
+              subtitle:
+                  'Enable availability from Profile to receive incoming leads.',
+              icon: Icons.power_settings_new,
             ),
           );
         }
 
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SectionHeader(
-              title: 'Incoming Leads',
-              actionText: 'See All',
-              onAction: () => context.goToMyJobs(),
-            ),
-            SizedBox(
-              height: 180,
-              child: ListView.builder(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                scrollDirection: Axis.horizontal,
-                itemCount: leads.length,
-                itemBuilder: (context, index) {
-                  final lead = leads[index];
-                  return _LeadCard(
-                    category:
-                        Helpers.getCategoryDisplayName(lead.serviceCategory),
-                    issue: lead.issueTitle,
-                    area: lead.address,
-                    timeAgo: _timeAgo(lead.createdAt),
-                    isSOS: lead.isSOS,
-                    onTap: () => context.goToLeadDetail(lead.bookingId),
-                  );
-                },
-              ),
-            ),
-          ],
+        return FutureBuilder<List<BookingModel>>(
+          key: ValueKey<int>(_refreshTick),
+          future: LocalBookingService.instance.getIncomingLeads(),
+          builder: (context, leadsSnapshot) {
+            final leads = leadsSnapshot.data ?? const <BookingModel>[];
+            final sosLeadsCount = leads.where((lead) => lead.isSOS).length;
+            final regularLeads =
+                leads.where((lead) => !lead.isSOS).toList(growable: false);
+
+            if (leadsSnapshot.connectionState == ConnectionState.waiting) {
+              return const Padding(
+                padding: EdgeInsets.all(16),
+                child: Center(child: AppLoadingIndicator()),
+              );
+            }
+
+            if (regularLeads.isEmpty) {
+              return Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Column(
+                  children: [
+                    EmptyStateWidget(
+                      title: 'No Incoming Leads',
+                      subtitle: sosLeadsCount > 0
+                          ? 'Only SOS requests are pending right now. Open SOS Requests to respond.'
+                          : 'New customer requests will appear here.',
+                      icon: Icons.notifications_none,
+                    ),
+                    if (sosLeadsCount > 0)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 12),
+                        child: ElevatedButton.icon(
+                          onPressed: () => context.goToProviderSOSRequests(),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.sosRed,
+                            foregroundColor: Colors.white,
+                          ),
+                          icon: const Icon(Icons.sos),
+                          label: Text('Open SOS Requests ($sosLeadsCount)'),
+                        ),
+                      ),
+                  ],
+                ),
+              );
+            }
+
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SectionHeader(
+                  title: 'Incoming Leads',
+                  actionText: 'See All',
+                  onAction: () => context.goToMyJobs(),
+                ),
+                SizedBox(
+                  height: 180,
+                  child: ListView.builder(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    scrollDirection: Axis.horizontal,
+                    itemCount: regularLeads.length,
+                    itemBuilder: (context, index) {
+                      final lead = regularLeads[index];
+                      return _LeadCard(
+                        category: Helpers.getCategoryDisplayName(
+                          lead.serviceCategory,
+                        ),
+                        issue: lead.issueTitle,
+                        area: lead.address,
+                        timeAgo: _timeAgo(lead.createdAt),
+                        isSOS: lead.isSOS,
+                        onTap: () => context.goToLeadDetail(lead.bookingId),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            );
+          },
         );
       },
     );
@@ -295,6 +305,7 @@ class _ProviderDashboardScreenState
     }
 
     return FutureBuilder<List<BookingModel>>(
+      key: ValueKey<int>(_refreshTick),
       future:
           LocalBookingService.instance.getProviderActiveBookings(providerId),
       builder: (context, snapshot) {
@@ -331,7 +342,8 @@ class _ProviderDashboardScreenState
                 final job = jobs[index];
                 return _ActiveJobCard(
                   customerName: job.customerName ?? 'Customer',
-                  service: job.issueTitle,
+                  service:
+                      '${Helpers.getCategoryDisplayName(job.serviceCategory)} - ${job.issueTitle}',
                   status: job.status,
                   address: job.address,
                   onTap: () => context.goToActiveJob(job.bookingId),

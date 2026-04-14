@@ -129,17 +129,49 @@ class _ProviderRegistrationScreenState
                                 _submitting = true;
                               });
 
-                              await LocalAuthService.instance
-                                  .submitProviderRegistration(uid: user.uid);
+                              try {
+                                final skills = _skillsController.text
+                                    .split(',')
+                                    .map((item) => item.trim())
+                                    .where((item) => item.isNotEmpty)
+                                    .toList();
 
-                              if (context.mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text('Registration submitted.'),
-                                    backgroundColor: AppColors.success,
-                                  ),
+                                final hourlyRate =
+                                    int.parse(_hourlyRateController.text);
+
+                                await LocalAuthService.instance
+                                    .submitProviderRegistration(
+                                  uid: user.uid,
+                                  bio: _bioController.text,
+                                  skills: skills,
+                                  primaryCity: _city,
+                                  hourlyRate: hourlyRate,
                                 );
-                                context.goToPendingApproval();
+
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('Registration submitted.'),
+                                      backgroundColor: AppColors.success,
+                                    ),
+                                  );
+                                  context.goToPendingApproval();
+                                }
+                              } catch (error) {
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(error.toString()),
+                                      backgroundColor: AppColors.error,
+                                    ),
+                                  );
+                                }
+                              } finally {
+                                if (mounted) {
+                                  setState(() {
+                                    _submitting = false;
+                                  });
+                                }
                               }
                             },
                       child: _submitting

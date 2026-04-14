@@ -8,15 +8,41 @@ import '../../../shared/models/booking_model.dart';
 import '../../../shared/widgets/widgets.dart';
 import '../../auth/providers/auth_provider.dart';
 
-class EarningsScreen extends ConsumerWidget {
+class EarningsScreen extends ConsumerStatefulWidget {
   const EarningsScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<EarningsScreen> createState() => _EarningsScreenState();
+}
+
+class _EarningsScreenState extends ConsumerState<EarningsScreen> {
+  int _refreshTick = 0;
+
+  Future<void> _refreshData() async {
+    if (!mounted) return;
+    setState(() {
+      _refreshTick++;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final user = ref.watch(currentUserProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Earnings')),
+      appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new),
+          onPressed: () {
+            if (Navigator.of(context).canPop()) {
+              Navigator.of(context).pop();
+              return;
+            }
+            context.goToProviderDashboard();
+          },
+        ),
+        title: const Text('Earnings'),
+      ),
       body: user == null
           ? const EmptyStateWidget(
               title: 'Sign In Required',
@@ -26,6 +52,7 @@ class EarningsScreen extends ConsumerWidget {
           : FutureBuilder<ProviderEarningsSummary>(
               future:
                   LocalBookingService.instance.getProviderEarnings(user.uid),
+              key: ValueKey('earnings-summary-${user.uid}-$_refreshTick'),
               builder: (context, summarySnapshot) {
                 if (summarySnapshot.connectionState ==
                     ConnectionState.waiting) {
@@ -34,111 +61,126 @@ class EarningsScreen extends ConsumerWidget {
 
                 final summary = summarySnapshot.data;
                 if (summary == null) {
-                  return const EmptyStateWidget(
-                    title: 'No Earnings Data',
-                    subtitle: 'Complete jobs to build your earnings history.',
-                    icon: Icons.account_balance_wallet_outlined,
+                  return RefreshIndicator(
+                    onRefresh: _refreshData,
+                    child: ListView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      children: const [
+                        SizedBox(height: 120),
+                        EmptyStateWidget(
+                          title: 'No Earnings Data',
+                          subtitle:
+                              'Complete jobs to build your earnings history.',
+                          icon: Icons.account_balance_wallet_outlined,
+                        ),
+                      ],
+                    ),
                   );
                 }
 
                 return FutureBuilder<List<BookingModel>>(
                   future:
                       LocalBookingService.instance.getProviderJobs(user.uid),
+                  key: ValueKey('provider-jobs-${user.uid}-$_refreshTick'),
                   builder: (context, jobsSnapshot) {
                     final jobs = jobsSnapshot.data ?? const <BookingModel>[];
                     final paidJobs =
                         jobs.where((job) => job.status == 'paid').toList();
 
-                    return ListView(
-                      padding: const EdgeInsets.all(16),
-                      children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: _EarningCard(
-                                title: 'Total Earned',
-                                value: 'Rs. ${summary.totalEarned}',
-                                color: AppColors.success,
-                                icon: Icons.trending_up,
+                    return RefreshIndicator(
+                      onRefresh: _refreshData,
+                      child: ListView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        padding: const EdgeInsets.all(16),
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _EarningCard(
+                                  title: 'Total Earned',
+                                  value: 'Rs. ${summary.totalEarned}',
+                                  color: AppColors.success,
+                                  icon: Icons.trending_up,
+                                ),
                               ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: _EarningCard(
-                                title: 'Pending',
-                                value: 'Rs. ${summary.pendingAmount}',
-                                color: AppColors.warning,
-                                icon: Icons.pending_actions,
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: _EarningCard(
+                                  title: 'Pending',
+                                  value: 'Rs. ${summary.pendingAmount}',
+                                  color: AppColors.warning,
+                                  icon: Icons.pending_actions,
+                                ),
                               ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: _EarningCard(
-                                title: 'Wallet',
-                                value: 'Rs. ${summary.walletBalance}',
-                                color: AppColors.secondary,
-                                icon: Icons.wallet,
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: _EarningCard(
-                                title: 'Completed Jobs',
-                                value: '${summary.completedJobs}',
-                                color: AppColors.primary,
-                                icon: Icons.assignment_turned_in,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
-                        SizedBox(
-                          height: 48,
-                          child: ElevatedButton.icon(
-                            onPressed: () => context.goToWallet(),
-                            icon: const Icon(Icons.account_balance_wallet),
-                            label: const Text('Manage Wallet'),
+                            ],
                           ),
-                        ),
-                        const SizedBox(height: 20),
-                        const Text(
-                          'Recent Paid Jobs',
-                          style: TextStyle(
-                            fontSize: 17,
-                            fontWeight: FontWeight.w600,
+                          const SizedBox(height: 12),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _EarningCard(
+                                  title: 'Wallet',
+                                  value: 'Rs. ${summary.walletBalance}',
+                                  color: AppColors.secondary,
+                                  icon: Icons.wallet,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: _EarningCard(
+                                  title: 'Completed Jobs',
+                                  value: '${summary.completedJobs}',
+                                  color: AppColors.primary,
+                                  icon: Icons.assignment_turned_in,
+                                ),
+                              ),
+                            ],
                           ),
-                        ),
-                        const SizedBox(height: 10),
-                        if (paidJobs.isEmpty)
-                          const EmptyStateWidget(
-                            title: 'No Paid Jobs Yet',
-                            subtitle:
-                                'Paid jobs will appear here once completed.',
-                            icon: Icons.payments_outlined,
-                          )
-                        else
-                          ...paidJobs.take(8).map(
-                                (job) => Card(
-                                  margin: const EdgeInsets.only(bottom: 10),
-                                  child: ListTile(
-                                    title: Text(job.issueTitle),
-                                    subtitle:
-                                        Text(job.customerName ?? 'Customer'),
-                                    trailing: Text(
-                                      'Rs. ${job.agreedPrice ?? 0}',
-                                      style: const TextStyle(
-                                        color: AppColors.success,
-                                        fontWeight: FontWeight.bold,
+                          const SizedBox(height: 16),
+                          SizedBox(
+                            height: 48,
+                            child: ElevatedButton.icon(
+                              onPressed: () => context.goToWallet(),
+                              icon: const Icon(Icons.account_balance_wallet),
+                              label: const Text('Manage Wallet'),
+                            ),
+                          ),
+                          const SizedBox(height: 20),
+                          const Text(
+                            'Recent Paid Jobs',
+                            style: TextStyle(
+                              fontSize: 17,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          if (paidJobs.isEmpty)
+                            const EmptyStateWidget(
+                              title: 'No Paid Jobs Yet',
+                              subtitle:
+                                  'Paid jobs will appear here once completed.',
+                              icon: Icons.payments_outlined,
+                            )
+                          else
+                            ...paidJobs.take(8).map(
+                                  (job) => Card(
+                                    margin: const EdgeInsets.only(bottom: 10),
+                                    child: ListTile(
+                                      title: Text(job.issueTitle),
+                                      subtitle:
+                                          Text(job.customerName ?? 'Customer'),
+                                      trailing: Text(
+                                        'Rs. ${job.agreedPrice ?? 0}',
+                                        style: const TextStyle(
+                                          color: AppColors.success,
+                                          fontWeight: FontWeight.bold,
+                                        ),
                                       ),
                                     ),
                                   ),
                                 ),
-                              ),
-                      ],
+                        ],
+                      ),
                     );
                   },
                 );

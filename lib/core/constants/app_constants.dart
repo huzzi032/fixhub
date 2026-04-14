@@ -17,7 +17,7 @@ class AppConstants {
   static const String phoneRegex = r'^(\+92|0)?3[0-9]{9}$';
   static const String emailRegex =
       r'^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$';
-  static const int minPasswordLength = 6;
+  static const int minPasswordLength = 8;
   static const int maxPasswordLength = 32;
 
   // Limits

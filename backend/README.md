@@ -89,8 +89,18 @@ DATABASE_URL=postgresql://[USERNAME_FROM_DASHBOARD]:myPassword%21with%3Fchars@[P
 ```bash
 cd backend
 npm install
-npx vercel dev
+npm run dev
 ```
+
+This starts a standalone Node server on port `8080` and does not require Vercel.
+
+To share your local backend with another device over the internet (temporary URL):
+
+```bash
+npx localtunnel --port 8080
+```
+
+Use the generated `https://...loca.lt` URL as `FIXHUB_API_BASE_URL` in Flutter builds.
 
 ## Deploy on Vercel
 

@@ -1,4 +1,6 @@
-﻿import '../auth/local_auth_service.dart';
+﻿import 'dart:convert';
+
+import '../auth/local_auth_service.dart';
 import '../constants/app_constants.dart';
 
 class LocalMarketplaceService {
@@ -46,6 +48,50 @@ class LocalMarketplaceService {
     return _mapServices(response['services']);
   }
 
+  Future<ProviderPublicProfile?> getProviderPublicProfile(
+    String providerId,
+  ) async {
+    final response = await _getAction(
+      'getProviderPublicProfile',
+      <String, String>{'providerId': providerId},
+    );
+
+    final profileRaw = response['profile'];
+    if (profileRaw is! Map) {
+      return null;
+    }
+
+    final profile = Map<String, dynamic>.from(profileRaw);
+    final services = _mapServices(response['services']);
+    final reviews = _mapProviderReviews(response['reviews']);
+
+    return ProviderPublicProfile(
+      providerId: profile['provider_id']?.toString().trim().isNotEmpty == true
+          ? profile['provider_id'].toString()
+          : providerId,
+      displayName: profile['display_name']?.toString().trim().isNotEmpty == true
+          ? profile['display_name'].toString()
+          : 'Provider',
+      profilePhotoUrl: _asStringOrNull(profile['profile_photo_url']),
+      bio: profile['bio']?.toString() ?? '',
+      skills: _asStringList(profile['skills']),
+      serviceCities: _asStringList(profile['service_cities']),
+      hourlyRateMin: _asIntOrNull(profile['hourly_rate_min']),
+      hourlyRateMax: _asIntOrNull(profile['hourly_rate_max']),
+      verificationStatus:
+          profile['verification_status']?.toString() ?? 'pending',
+      joinedAt: _asIntOrNull(profile['joined_at']) == null
+          ? null
+          : DateTime.fromMillisecondsSinceEpoch(_asInt(profile['joined_at'])),
+      averageRating: _asDouble(profile['average_rating']),
+      totalReviews: _asInt(profile['total_reviews']),
+      completedJobs: _asInt(profile['completed_jobs']),
+      activeServices: _asInt(profile['active_services']),
+      services: services,
+      reviews: reviews,
+    );
+  }
+
   Future<MarketplaceServiceItem?> getServiceById(String serviceId) async {
     final response = await _getAction('getServiceById', <String, String>{
       'serviceId': serviceId,
@@ -68,6 +114,7 @@ class LocalMarketplaceService {
     required String category,
     required int minPrice,
     required int maxPrice,
+    List<String> imageUrls = const <String>[],
     bool isActive = true,
   }) async {
     final response = await _postAction('saveProviderService', <String, dynamic>{
@@ -79,6 +126,7 @@ class LocalMarketplaceService {
       'category': _normalizeCategory(category),
       'minPrice': minPrice,
       'maxPrice': maxPrice,
+      'imageUrls': imageUrls,
       'isActive': isActive,
     });
 
@@ -234,7 +282,32 @@ class LocalMarketplaceService {
         .toList();
   }
 
+  List<ProviderReviewItem> _mapProviderReviews(dynamic raw) {
+    if (raw is! List) {
+      return const <ProviderReviewItem>[];
+    }
+
+    return raw
+        .whereType<Map>()
+        .map(
+          (row) => ProviderReviewItem(
+            reviewId: row['review_id']?.toString() ?? '',
+            bookingId: row['booking_id']?.toString() ?? '',
+            customerId: _asStringOrNull(row['customer_id']),
+            customerName: row['customer_name']?.toString() ?? 'Customer',
+            customerPhotoUrl: _asStringOrNull(row['customer_photo_url']),
+            rating: _asInt(row['rating']),
+            comment: row['comment']?.toString() ?? '',
+            createdAt:
+                DateTime.fromMillisecondsSinceEpoch(_asInt(row['created_at'])),
+          ),
+        )
+        .toList();
+  }
+
   MarketplaceServiceItem _mapServiceRow(Map<String, dynamic> row) {
+    final imageUrls = _asStringList(row['image_urls']);
+
     return MarketplaceServiceItem(
       serviceId: row['service_id']?.toString() ?? '',
       providerId: row['provider_id']?.toString() ?? '',
@@ -242,6 +315,7 @@ class LocalMarketplaceService {
       title: row['title']?.toString() ?? '',
       description: row['description']?.toString() ?? '',
       category: row['category']?.toString() ?? 'other',
+      imageUrls: imageUrls,
       minPrice: _asInt(row['min_price']),
       maxPrice: _asInt(row['max_price']),
       rating: _asDouble(row['rating']),
@@ -308,6 +382,26 @@ class LocalMarketplaceService {
     return fallback;
   }
 
+  int? _asIntOrNull(dynamic value) {
+    if (value == null) {
+      return null;
+    }
+
+    if (value is int) {
+      return value;
+    }
+
+    if (value is num) {
+      return value.toInt();
+    }
+
+    if (value is String && value.trim().isNotEmpty) {
+      return int.tryParse(value.trim());
+    }
+
+    return null;
+  }
+
   double _asDouble(dynamic value, [double fallback = 0]) {
     if (value is double) {
       return value;
@@ -332,6 +426,33 @@ class LocalMarketplaceService {
     final text = value.toString();
     return text.isEmpty ? null : text;
   }
+
+  List<String> _asStringList(dynamic value) {
+    if (value is List) {
+      return value
+          .map((item) => item.toString().trim())
+          .where((item) => item.isNotEmpty)
+          .toList();
+    }
+
+    if (value is String && value.trim().isNotEmpty) {
+      try {
+        final decoded = value.trim();
+        if (decoded.startsWith('[')) {
+          final List<dynamic> parsed =
+              List<dynamic>.from(jsonDecode(decoded) as List<dynamic>);
+          return parsed
+              .map((item) => item.toString().trim())
+              .where((item) => item.isNotEmpty)
+              .toList();
+        }
+      } catch (_) {
+        return <String>[];
+      }
+    }
+
+    return <String>[];
+  }
 }
 
 class MarketplaceServiceItem {
@@ -341,6 +462,7 @@ class MarketplaceServiceItem {
   final String title;
   final String description;
   final String category;
+  final List<String> imageUrls;
   final int minPrice;
   final int maxPrice;
   final double rating;
@@ -354,6 +476,7 @@ class MarketplaceServiceItem {
     required this.title,
     required this.description,
     required this.category,
+    this.imageUrls = const <String>[],
     required this.minPrice,
     required this.maxPrice,
     required this.rating,
@@ -363,6 +486,8 @@ class MarketplaceServiceItem {
 
   String get categoryLabel =>
       AppConstants.categoryDisplayNames[category] ?? 'Other';
+
+  String? get coverImageUrl => imageUrls.isEmpty ? null : imageUrls.first;
 }
 
 class NeighborhoodDealItem {
@@ -411,4 +536,66 @@ class NeighborhoodDealItem {
       : 'Provider Community';
 
   bool get isOpen => status == 'open';
+}
+
+class ProviderPublicProfile {
+  final String providerId;
+  final String displayName;
+  final String? profilePhotoUrl;
+  final String bio;
+  final List<String> skills;
+  final List<String> serviceCities;
+  final int? hourlyRateMin;
+  final int? hourlyRateMax;
+  final String verificationStatus;
+  final DateTime? joinedAt;
+  final double averageRating;
+  final int totalReviews;
+  final int completedJobs;
+  final int activeServices;
+  final List<MarketplaceServiceItem> services;
+  final List<ProviderReviewItem> reviews;
+
+  const ProviderPublicProfile({
+    required this.providerId,
+    required this.displayName,
+    this.profilePhotoUrl,
+    this.bio = '',
+    this.skills = const <String>[],
+    this.serviceCities = const <String>[],
+    this.hourlyRateMin,
+    this.hourlyRateMax,
+    this.verificationStatus = 'pending',
+    this.joinedAt,
+    this.averageRating = 0,
+    this.totalReviews = 0,
+    this.completedJobs = 0,
+    this.activeServices = 0,
+    this.services = const <MarketplaceServiceItem>[],
+    this.reviews = const <ProviderReviewItem>[],
+  });
+
+  bool get isVerified => verificationStatus == 'approved';
+}
+
+class ProviderReviewItem {
+  final String reviewId;
+  final String bookingId;
+  final String? customerId;
+  final String customerName;
+  final String? customerPhotoUrl;
+  final int rating;
+  final String comment;
+  final DateTime createdAt;
+
+  const ProviderReviewItem({
+    required this.reviewId,
+    required this.bookingId,
+    this.customerId,
+    required this.customerName,
+    this.customerPhotoUrl,
+    required this.rating,
+    this.comment = '',
+    required this.createdAt,
+  });
 }

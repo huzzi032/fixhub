@@ -1,5 +1,8 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../../core/auth/local_auth_service.dart';
 import '../../../core/database/local_settings_service.dart';
@@ -18,6 +21,7 @@ class CustomerProfileScreen extends ConsumerStatefulWidget {
 }
 
 class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
+  final ImagePicker _imagePicker = ImagePicker();
   UserNotificationSettings _notificationSettings =
       const UserNotificationSettings(
     bookingUpdates: true,
@@ -177,12 +181,67 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
     );
   }
 
+  Future<void> _updateProfilePhoto(UserModel userData) async {
+    final user = ref.read(currentUserProvider);
+    if (user == null) {
+      return;
+    }
+
+    final picked = await _imagePicker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 75,
+      maxWidth: 1200,
+      maxHeight: 1200,
+    );
+
+    if (picked == null) {
+      return;
+    }
+
+    try {
+      final bytes = await picked.readAsBytes();
+      final dataUrl = 'data:image/jpeg;base64,${base64Encode(bytes)}';
+
+      await LocalAuthService.instance.updateUserProfile(
+        uid: user.uid,
+        name: userData.name,
+        phone: userData.phone,
+        email: userData.email,
+        profilePhotoUrl: dataUrl,
+      );
+
+      if (!mounted) return;
+      ref.invalidate(currentUserDataProvider);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Profile photo updated.')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to update profile photo: $error'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final userDataAsync = ref.watch(currentUserDataProvider);
 
     return Scaffold(
       appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new),
+          onPressed: () {
+            if (Navigator.of(context).canPop()) {
+              Navigator.of(context).pop();
+              return;
+            }
+            context.goToCustomerHome();
+          },
+        ),
         title: const Text('Profile'),
         actions: [
           IconButton(
@@ -378,15 +437,7 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
                     padding: EdgeInsets.zero,
                     icon: const Icon(Icons.camera_alt,
                         size: 18, color: Colors.white),
-                    onPressed: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text(
-                            'Profile photo upload will be added in next update.',
-                          ),
-                        ),
-                      );
-                    },
+                    onPressed: () => _updateProfilePhoto(userData),
                   ),
                 ),
               ),

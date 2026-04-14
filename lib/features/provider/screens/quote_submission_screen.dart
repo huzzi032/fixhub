@@ -138,13 +138,38 @@ class _QuoteSubmissionScreenState extends ConsumerState<QuoteSubmissionScreen> {
                         );
 
                         if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content:
-                                  Text('Quote submitted and lead accepted.'),
-                              backgroundColor: AppColors.success,
+                          final action = await showDialog<String>(
+                            context: context,
+                            builder: (dialogContext) => AlertDialog(
+                              title: const Text('Lead Accepted'),
+                              content: const Text(
+                                'You can now chat with the customer or open the active job view.',
+                              ),
+                              actions: [
+                                TextButton(
+                                  onPressed: () =>
+                                      Navigator.of(dialogContext).pop('job'),
+                                  child: const Text('Active Job'),
+                                ),
+                                FilledButton.icon(
+                                  onPressed: () =>
+                                      Navigator.of(dialogContext).pop('chat'),
+                                  icon: const Icon(Icons.chat_bubble_outline),
+                                  label: const Text('Open Chat'),
+                                ),
+                              ],
                             ),
                           );
+
+                          if (!context.mounted) {
+                            return;
+                          }
+
+                          if (action == 'chat') {
+                            context.goToBookingChat(widget.bookingId);
+                            return;
+                          }
+
                           context.goToActiveJob(widget.bookingId);
                         }
                       },

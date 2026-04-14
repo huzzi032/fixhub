@@ -1,5 +1,9 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/constants/app_constants.dart';
+import '../../../core/database/local_marketplace_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/router/app_router.dart';
 import '../../../shared/widgets/widgets.dart';
@@ -18,44 +22,6 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     'AC Repair',
     'Electrician near me',
   ];
-  final List<_SearchService> _allServices = const [
-    _SearchService(
-      id: 'service_plumber_1',
-      providerName: 'Ali Khan',
-      title: 'Professional Plumbing Services',
-      category: 'Plumber',
-      minPrice: 500,
-      maxPrice: 2000,
-      rating: 4.5,
-    ),
-    _SearchService(
-      id: 'service_electrician_1',
-      providerName: 'Usman Raza',
-      title: 'Home Electrical Repair',
-      category: 'Electrician',
-      minPrice: 700,
-      maxPrice: 3000,
-      rating: 4.7,
-    ),
-    _SearchService(
-      id: 'service_ac_1',
-      providerName: 'Hamza Arif',
-      title: 'AC Repair and Gas Refill',
-      category: 'AC Repair',
-      minPrice: 1200,
-      maxPrice: 4500,
-      rating: 4.3,
-    ),
-    _SearchService(
-      id: 'service_cleaning_1',
-      providerName: 'Sara Services',
-      title: 'Deep Cleaning for Home',
-      category: 'Cleaning',
-      minPrice: 1500,
-      maxPrice: 5000,
-      rating: 4.8,
-    ),
-  ];
 
   // Filter states
   final Set<String> _selectedCategories = {};
@@ -67,44 +33,6 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   void dispose() {
     _searchController.dispose();
     super.dispose();
-  }
-
-  List<_SearchService> get _filteredServices {
-    final query = _searchController.text.trim().toLowerCase();
-
-    final filtered = _allServices.where((service) {
-      final queryMatches = query.isEmpty ||
-          service.title.toLowerCase().contains(query) ||
-          service.providerName.toLowerCase().contains(query) ||
-          service.category.toLowerCase().contains(query);
-
-      final categoryMatches = _selectedCategories.isEmpty ||
-          _selectedCategories.contains(service.category);
-
-      final priceMatches = service.minPrice <= _priceRange.end &&
-          service.maxPrice >= _priceRange.start;
-
-      final ratingMatches = service.rating >= _minRating;
-
-      return queryMatches && categoryMatches && priceMatches && ratingMatches;
-    }).toList();
-
-    switch (_sortBy) {
-      case 'rating':
-        filtered.sort((a, b) => b.rating.compareTo(a.rating));
-        break;
-      case 'price_low':
-        filtered.sort((a, b) => a.minPrice.compareTo(b.minPrice));
-        break;
-      case 'price_high':
-        filtered.sort((a, b) => b.maxPrice.compareTo(a.maxPrice));
-        break;
-      case 'nearest':
-      default:
-        break;
-    }
-
-    return filtered;
   }
 
   void _showFilterSheet() {
@@ -137,6 +65,16 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new),
+          onPressed: () {
+            if (Navigator.of(context).canPop()) {
+              Navigator.of(context).pop();
+              return;
+            }
+            context.goToCustomerHome();
+          },
+        ),
         title: TextField(
           controller: _searchController,
           autofocus: true,
@@ -253,28 +191,42 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   }
 
   Widget _buildSearchResults() {
-    final results = _filteredServices;
+    return FutureBuilder<List<MarketplaceServiceItem>>(
+      future: LocalMarketplaceService.instance.searchServices(
+        query: _searchController.text,
+        categories: _selectedCategories,
+        minPrice: _priceRange.start.round(),
+        maxPrice: _priceRange.end.round(),
+        minRating: _minRating,
+        sortBy: _sortBy,
+      ),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: AppLoadingIndicator());
+        }
 
-    if (results.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.all(16),
-        child: EmptyStateWidget(
-          title: 'No Services Found',
-          subtitle: 'Try changing your search or filters.',
-          icon: Icons.search_off,
-        ),
-      );
-    }
+        final results = snapshot.data ?? const <MarketplaceServiceItem>[];
 
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: results.length,
-      itemBuilder: (context, index) {
-        final service = results[index];
-        return _ServiceResultCard(
-          service: service,
-          onTap: () {
-            context.goToServiceDetail(service.id);
+        if (results.isEmpty) {
+          return const Padding(
+            padding: EdgeInsets.all(16),
+            child: EmptyStateWidget(
+              title: 'No Services Found',
+              subtitle: 'Try changing your search or filters.',
+              icon: Icons.search_off,
+            ),
+          );
+        }
+
+        return ListView.builder(
+          padding: const EdgeInsets.all(16),
+          itemCount: results.length,
+          itemBuilder: (context, index) {
+            final service = results[index];
+            return _ServiceResultCard(
+              service: service,
+              onTap: () => context.goToServiceDetail(service.serviceId),
+            );
           },
         );
       },
@@ -283,13 +235,44 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
 }
 
 class _ServiceResultCard extends StatelessWidget {
-  final _SearchService service;
+  final MarketplaceServiceItem service;
   final VoidCallback? onTap;
 
   const _ServiceResultCard({required this.service, this.onTap});
 
   @override
   Widget build(BuildContext context) {
+    Widget imageWidget;
+    final cover = service.coverImageUrl;
+    if (cover != null && cover.startsWith('data:image')) {
+      final commaIndex = cover.indexOf(',');
+      if (commaIndex > 0 && commaIndex < cover.length - 1) {
+        try {
+          imageWidget = Image.memory(
+            base64Decode(cover.substring(commaIndex + 1)),
+            fit: BoxFit.cover,
+          );
+        } catch (_) {
+          imageWidget =
+              const Icon(Icons.home_repair_service, color: AppColors.primary);
+        }
+      } else {
+        imageWidget =
+            const Icon(Icons.home_repair_service, color: AppColors.primary);
+      }
+    } else if (cover != null &&
+        (cover.startsWith('http://') || cover.startsWith('https://'))) {
+      imageWidget = Image.network(
+        cover,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) =>
+            const Icon(Icons.home_repair_service, color: AppColors.primary),
+      );
+    } else {
+      imageWidget =
+          const Icon(Icons.home_repair_service, color: AppColors.primary);
+    }
+
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       child: InkWell(
@@ -306,10 +289,7 @@ class _ServiceResultCard extends StatelessWidget {
                   width: 80,
                   height: 80,
                   color: AppColors.primary.withValues(alpha: 0.1),
-                  child: const Icon(
-                    Icons.plumbing,
-                    color: AppColors.primary,
-                  ),
+                  child: imageWidget,
                 ),
               ),
               const SizedBox(width: 12),
@@ -322,17 +302,40 @@ class _ServiceResultCard extends StatelessWidget {
                     // Provider Row
                     Row(
                       children: [
-                        UserAvatar(
-                          name: service.providerName,
-                          size: 24,
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          service.providerName,
-                          style: const TextStyle(
-                            fontSize: 12,
-                            color: AppColors.onSurfaceVariant,
+                        Expanded(
+                          child: InkWell(
+                            onTap: () =>
+                                context.goToProviderProfile(service.providerId),
+                            borderRadius: BorderRadius.circular(8),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 4),
+                              child: Row(
+                                children: [
+                                  UserAvatar(
+                                    name: service.providerName,
+                                    size: 24,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      service.providerName,
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        color: AppColors.onSurfaceVariant,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
                           ),
+                        ),
+                        TextButton(
+                          onPressed: () =>
+                              context.goToProviderProfile(service.providerId),
+                          child: const Text('Profile'),
                         ),
                       ],
                     ),
@@ -365,7 +368,7 @@ class _ServiceResultCard extends StatelessWidget {
                             borderRadius: BorderRadius.circular(4),
                           ),
                           child: Text(
-                            service.category,
+                            service.categoryLabel,
                             style: const TextStyle(
                               fontSize: 10,
                               color: AppColors.primary,
@@ -397,26 +400,6 @@ class _ServiceResultCard extends StatelessWidget {
   }
 }
 
-class _SearchService {
-  final String id;
-  final String providerName;
-  final String title;
-  final String category;
-  final int minPrice;
-  final int maxPrice;
-  final double rating;
-
-  const _SearchService({
-    required this.id,
-    required this.providerName,
-    required this.title,
-    required this.category,
-    required this.minPrice,
-    required this.maxPrice,
-    required this.rating,
-  });
-}
-
 class _FilterSheet extends StatefulWidget {
   final Set<String> selectedCategories;
   final RangeValues priceRange;
@@ -442,15 +425,9 @@ class _FilterSheetState extends State<_FilterSheet> {
   late double _minRating;
   late String _sortBy;
 
-  final List<String> _allCategories = [
-    'Plumber',
-    'Electrician',
-    'Carpenter',
-    'Painter',
-    'Car Mechanic',
-    'AC Repair',
-    'Cleaning',
-  ];
+  final List<String> _allCategories = AppConstants.serviceCategories
+      .where((category) => category != 'other')
+      .toList();
 
   @override
   void initState() {
@@ -532,7 +509,10 @@ class _FilterSheetState extends State<_FilterSheet> {
                       children: _allCategories.map((category) {
                         final isSelected = _categories.contains(category);
                         return FilterChip(
-                          label: Text(category),
+                          label: Text(
+                            AppConstants.categoryDisplayNames[category] ??
+                                category,
+                          ),
                           selected: isSelected,
                           onSelected: (selected) {
                             setState(() {

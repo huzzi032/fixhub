@@ -44,6 +44,11 @@ class LocalBookingService {
       'bookingId': bookingId,
     });
 
+    final error = response['error']?.toString();
+    if (error != null && error.trim().isNotEmpty) {
+      throw StateError(error);
+    }
+
     final row = response['booking'];
     if (row is! Map) {
       return null;

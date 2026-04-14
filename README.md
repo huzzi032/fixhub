@@ -99,7 +99,23 @@ npm install
 3. Local backend dev:
 
 ```bash
-npx vercel dev
+cd backend
+npm run dev
+```
+
+No Vercel is required for local API runtime.
+
+Temporary public URL for testing with another phone:
+
+```bash
+cd backend
+npx localtunnel --port 8080
+```
+
+Build Flutter with the tunnel URL:
+
+```bash
+flutter run --dart-define=FIXHUB_API_BASE_URL=https://your-subdomain.loca.lt
 ```
 
 4. Deploy backend on Vercel with env vars:

@@ -55,10 +55,27 @@ class _MyOrdersScreenState extends ConsumerState<MyOrdersScreen>
     });
   }
 
+  Future<void> _refreshOrders() async {
+    setState(() {
+      _isLoading = true;
+    });
+    await _loadBookings();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new),
+          onPressed: () {
+            if (Navigator.of(context).canPop()) {
+              Navigator.of(context).pop();
+              return;
+            }
+            context.goToCustomerHome();
+          },
+        ),
         title: const Text('My Orders'),
         bottom: TabBar(
           controller: _tabController,
@@ -88,28 +105,41 @@ class _MyOrdersScreenState extends ConsumerState<MyOrdersScreen>
         _bookings.where((booking) => booking.isActive).toList();
 
     if (activeOrders.isEmpty) {
-      return const EmptyStateWidget(
-        title: 'No Active Orders',
-        subtitle: 'You don\'t have any active bookings at the moment',
-        icon: Icons.assignment_outlined,
+      return RefreshIndicator(
+        onRefresh: _refreshOrders,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          children: const [
+            SizedBox(height: 80),
+            EmptyStateWidget(
+              title: 'No Active Orders',
+              subtitle: 'You don\'t have any active bookings at the moment',
+              icon: Icons.assignment_outlined,
+            ),
+          ],
+        ),
       );
     }
 
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: activeOrders.length,
-      itemBuilder: (context, index) {
-        final order = activeOrders[index];
-        return _OrderCard(
-          id: order.bookingId,
-          title: order.issueTitle,
-          provider: order.providerName ?? 'Awaiting provider',
-          status: order.status,
-          date: order.createdAt,
-          amount: order.agreedPrice ?? 0,
-          onTap: () => context.goToBookingTracking(order.bookingId),
-        );
-      },
+    return RefreshIndicator(
+      onRefresh: _refreshOrders,
+      child: ListView.builder(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(16),
+        itemCount: activeOrders.length,
+        itemBuilder: (context, index) {
+          final order = activeOrders[index];
+          return _OrderCard(
+            id: order.bookingId,
+            title: order.issueTitle,
+            provider: order.providerName ?? 'Awaiting provider',
+            status: order.status,
+            date: order.createdAt,
+            amount: order.agreedPrice ?? 0,
+            onTap: () => context.goToBookingTracking(order.bookingId),
+          );
+        },
+      ),
     );
   }
 
@@ -118,28 +148,41 @@ class _MyOrdersScreenState extends ConsumerState<MyOrdersScreen>
         _bookings.where((booking) => booking.isFinished).toList();
 
     if (pastOrders.isEmpty) {
-      return const EmptyStateWidget(
-        title: 'No Past Orders',
-        subtitle: 'Your completed bookings will appear here',
-        icon: Icons.history,
+      return RefreshIndicator(
+        onRefresh: _refreshOrders,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          children: const [
+            SizedBox(height: 80),
+            EmptyStateWidget(
+              title: 'No Past Orders',
+              subtitle: 'Your completed bookings will appear here',
+              icon: Icons.history,
+            ),
+          ],
+        ),
       );
     }
 
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: pastOrders.length,
-      itemBuilder: (context, index) {
-        final order = pastOrders[index];
-        return _OrderCard(
-          id: order.bookingId,
-          title: order.issueTitle,
-          provider: order.providerName ?? 'N/A',
-          status: order.status,
-          date: order.createdAt,
-          amount: order.agreedPrice ?? 0,
-          onTap: () => context.goToBookingDetail(order.bookingId),
-        );
-      },
+    return RefreshIndicator(
+      onRefresh: _refreshOrders,
+      child: ListView.builder(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(16),
+        itemCount: pastOrders.length,
+        itemBuilder: (context, index) {
+          final order = pastOrders[index];
+          return _OrderCard(
+            id: order.bookingId,
+            title: order.issueTitle,
+            provider: order.providerName ?? 'N/A',
+            status: order.status,
+            date: order.createdAt,
+            amount: order.agreedPrice ?? 0,
+            onTap: () => context.goToBookingDetail(order.bookingId),
+          );
+        },
+      ),
     );
   }
 
@@ -148,28 +191,41 @@ class _MyOrdersScreenState extends ConsumerState<MyOrdersScreen>
         _bookings.where((booking) => booking.isCancelled).toList();
 
     if (cancelledOrders.isEmpty) {
-      return const EmptyStateWidget(
-        title: 'No Cancelled Orders',
-        subtitle: 'Your cancelled bookings will appear here',
-        icon: Icons.cancel_outlined,
+      return RefreshIndicator(
+        onRefresh: _refreshOrders,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          children: const [
+            SizedBox(height: 80),
+            EmptyStateWidget(
+              title: 'No Cancelled Orders',
+              subtitle: 'Your cancelled bookings will appear here',
+              icon: Icons.cancel_outlined,
+            ),
+          ],
+        ),
       );
     }
 
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: cancelledOrders.length,
-      itemBuilder: (context, index) {
-        final order = cancelledOrders[index];
-        return _OrderCard(
-          id: order.bookingId,
-          title: order.issueTitle,
-          provider: order.providerName ?? 'N/A',
-          status: order.status,
-          date: order.createdAt,
-          amount: order.agreedPrice ?? 0,
-          onTap: () => context.goToBookingDetail(order.bookingId),
-        );
-      },
+    return RefreshIndicator(
+      onRefresh: _refreshOrders,
+      child: ListView.builder(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(16),
+        itemCount: cancelledOrders.length,
+        itemBuilder: (context, index) {
+          final order = cancelledOrders[index];
+          return _OrderCard(
+            id: order.bookingId,
+            title: order.issueTitle,
+            provider: order.providerName ?? 'N/A',
+            status: order.status,
+            date: order.createdAt,
+            amount: order.agreedPrice ?? 0,
+            onTap: () => context.goToBookingDetail(order.bookingId),
+          );
+        },
+      ),
     );
   }
 

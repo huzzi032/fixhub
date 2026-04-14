@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/database/local_marketplace_service.dart';
+import '../../../core/router/app_router.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../shared/widgets/widgets.dart';
 import '../../auth/providers/auth_provider.dart';
@@ -51,7 +52,19 @@ class _NeighborhoodDealsScreenState
     final user = ref.watch(currentUserProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Neighborhood Deals')),
+      appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new),
+          onPressed: () {
+            if (Navigator.of(context).canPop()) {
+              Navigator.of(context).pop();
+              return;
+            }
+            context.goToCustomerHome();
+          },
+        ),
+        title: const Text('Neighborhood Deals'),
+      ),
       body: user == null
           ? const EmptyStateWidget(
               title: 'Sign In Required',

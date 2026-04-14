@@ -58,8 +58,39 @@ export default async function handler(req, res) {
     args: [uid],
   });
 
+  const providerResult = await db.execute({
+    sql: `
+      SELECT verification_status, bio, skills, service_cities, hourly_rate_min, hourly_rate_max,
+             wallet_balance, earnings_total, joined_at
+      FROM providers
+      WHERE user_id = ?
+      LIMIT 1
+    `,
+    args: [uid],
+  });
+
   const authRow = authResult.rows[0];
   const profileRow = profileResult.rows.length > 0 ? profileResult.rows[0] : null;
+  const providerRow =
+    providerResult.rows.length > 0 ? providerResult.rows[0] : null;
+
+  const parseStringList = (value) => {
+    if (typeof value !== 'string' || value.trim().length === 0) {
+      return [];
+    }
+
+    try {
+      const parsed = JSON.parse(value);
+      if (!Array.isArray(parsed)) {
+        return [];
+      }
+      return parsed
+        .map((item) => String(item || '').trim())
+        .filter((item) => item.length > 0);
+    } catch (_) {
+      return [];
+    }
+  };
 
   return sendJson(res, 200, {
     user: {
@@ -79,6 +110,29 @@ export default async function handler(req, res) {
             fcmToken: profileRow.fcm_token ? String(profileRow.fcm_token) : null,
             createdAt: Number(profileRow.created_at || Date.now()),
             isActive: Number(profileRow.is_active || 1) === 1,
+            providerProfile: providerRow
+              ? {
+                  verificationStatus: providerRow.verification_status
+                    ? String(providerRow.verification_status)
+                    : 'pending',
+                  bio: String(providerRow.bio || ''),
+                  skills: parseStringList(String(providerRow.skills || '[]')),
+                  serviceCities: parseStringList(
+                    String(providerRow.service_cities || '[]'),
+                  ),
+                  hourlyRateMin:
+                    providerRow.hourly_rate_min == null
+                      ? null
+                      : Number(providerRow.hourly_rate_min),
+                  hourlyRateMax:
+                    providerRow.hourly_rate_max == null
+                      ? null
+                      : Number(providerRow.hourly_rate_max),
+                  walletBalance: Number(providerRow.wallet_balance || 0),
+                  earningsTotal: Number(providerRow.earnings_total || 0),
+                  joinedAt: Number(providerRow.joined_at || Date.now()),
+                }
+              : null,
           }
         : null,
     },

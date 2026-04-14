@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import '../../core/theme/app_theme.dart';
@@ -27,11 +29,44 @@ class UserAvatar extends StatelessWidget {
     final initials = Helpers.getInitials(name);
     final bgColor = Helpers.getAvatarColor(name);
 
+    Widget? imageChild;
+    if (hasImage) {
+      final value = imageUrl!.trim();
+      if (value.startsWith('data:image')) {
+        final commaIndex = value.indexOf(',');
+        if (commaIndex > 0 && commaIndex < value.length - 1) {
+          try {
+            imageChild = Image.memory(
+              base64Decode(value.substring(commaIndex + 1)),
+              fit: BoxFit.cover,
+            );
+          } catch (_) {
+            imageChild = null;
+          }
+        }
+      } else if (value.startsWith('http://') || value.startsWith('https://')) {
+        imageChild = CachedNetworkImage(
+          imageUrl: value,
+          fit: BoxFit.cover,
+          placeholder: (context, url) => Center(
+            child: SizedBox(
+              width: size * 0.4,
+              height: size * 0.4,
+              child: const CircularProgressIndicator(
+                strokeWidth: 2,
+              ),
+            ),
+          ),
+          errorWidget: (context, url, error) => _buildFallback(initials),
+        );
+      }
+    }
+
     Widget avatar = Container(
       width: size,
       height: size,
       decoration: BoxDecoration(
-        color: hasImage ? null : bgColor,
+        color: imageChild != null ? null : bgColor,
         shape: BoxShape.circle,
         border: showBorder
             ? Border.all(
@@ -40,22 +75,9 @@ class UserAvatar extends StatelessWidget {
               )
             : null,
       ),
-      child: hasImage
+      child: imageChild != null
           ? ClipOval(
-              child: CachedNetworkImage(
-                imageUrl: imageUrl!,
-                fit: BoxFit.cover,
-                placeholder: (context, url) => Center(
-                  child: SizedBox(
-                    width: size * 0.4,
-                    height: size * 0.4,
-                    child: const CircularProgressIndicator(
-                      strokeWidth: 2,
-                    ),
-                  ),
-                ),
-                errorWidget: (context, url, error) => _buildFallback(initials),
-              ),
+              child: imageChild,
             )
           : _buildFallback(initials),
     );

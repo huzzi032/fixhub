@@ -1,5 +1,8 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../../core/auth/local_auth_service.dart';
 import '../../../core/database/local_settings_service.dart';
@@ -18,6 +21,7 @@ class ProviderProfileScreen extends ConsumerStatefulWidget {
 }
 
 class _ProviderProfileScreenState extends ConsumerState<ProviderProfileScreen> {
+  final ImagePicker _imagePicker = ImagePicker();
   UserNotificationSettings _notificationSettings =
       const UserNotificationSettings(
     bookingUpdates: true,
@@ -120,6 +124,51 @@ class _ProviderProfileScreenState extends ConsumerState<ProviderProfileScreen> {
     );
   }
 
+  Future<void> _updateProfilePhoto(UserModel userData) async {
+    final user = ref.read(currentUserProvider);
+    if (user == null) {
+      return;
+    }
+
+    final picked = await _imagePicker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 75,
+      maxWidth: 1200,
+      maxHeight: 1200,
+    );
+
+    if (picked == null) {
+      return;
+    }
+
+    try {
+      final bytes = await picked.readAsBytes();
+      final dataUrl = 'data:image/jpeg;base64,${base64Encode(bytes)}';
+
+      await LocalAuthService.instance.updateUserProfile(
+        uid: user.uid,
+        name: userData.name,
+        phone: userData.phone,
+        email: userData.email,
+        profilePhotoUrl: dataUrl,
+      );
+
+      if (!mounted) return;
+      ref.invalidate(currentUserDataProvider);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Profile photo updated.')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to update profile photo: $error'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final user = ref.watch(currentUserProvider);
@@ -127,6 +176,16 @@ class _ProviderProfileScreenState extends ConsumerState<ProviderProfileScreen> {
 
     return Scaffold(
       appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new),
+          onPressed: () {
+            if (Navigator.of(context).canPop()) {
+              Navigator.of(context).pop();
+              return;
+            }
+            context.goToProviderDashboard();
+          },
+        ),
         title: const Text('Provider Profile'),
         actions: [
           IconButton(
@@ -262,10 +321,37 @@ class _ProviderProfileScreenState extends ConsumerState<ProviderProfileScreen> {
       padding: const EdgeInsets.all(16),
       child: Column(
         children: [
-          UserAvatar(
-              name: userData.name,
-              imageUrl: userData.profilePhotoUrl,
-              size: 100),
+          Stack(
+            children: [
+              UserAvatar(
+                name: userData.name,
+                imageUrl: userData.profilePhotoUrl,
+                size: 100,
+              ),
+              Positioned(
+                right: 0,
+                bottom: 0,
+                child: Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: AppColors.primary,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white, width: 2),
+                  ),
+                  child: IconButton(
+                    padding: EdgeInsets.zero,
+                    icon: const Icon(
+                      Icons.camera_alt,
+                      size: 18,
+                      color: Colors.white,
+                    ),
+                    onPressed: () => _updateProfilePhoto(userData),
+                  ),
+                ),
+              ),
+            ],
+          ),
           const SizedBox(height: 14),
           Text(
             userData.name,

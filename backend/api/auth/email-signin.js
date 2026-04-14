@@ -2,6 +2,36 @@ import { createAccessToken, verifyPassword } from '../../lib/auth.js';
 import { db, ensureSchema } from '../../lib/db.js';
 import { methodNotAllowed, readJsonBody, sendJson } from '../../lib/http.js';
 
+const EMAIL_REGEX = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/;
+
+function isValidEmail(email) {
+  if (!email || email.includes('..')) {
+    return false;
+  }
+
+  const parts = email.split('@');
+  if (parts.length !== 2) {
+    return false;
+  }
+
+  const local = parts[0];
+  const domain = parts[1];
+
+  if (
+    !local ||
+    local.startsWith('.') ||
+    local.endsWith('.') ||
+    !domain ||
+    domain.startsWith('-') ||
+    domain.endsWith('-') ||
+    !domain.includes('.')
+  ) {
+    return false;
+  }
+
+  return EMAIL_REGEX.test(email);
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return methodNotAllowed(res, 'POST');
@@ -16,6 +46,12 @@ export default async function handler(req, res) {
   if (!email || !password) {
     return sendJson(res, 400, {
       error: 'email and password are required.',
+    });
+  }
+
+  if (!isValidEmail(email)) {
+    return sendJson(res, 400, {
+      error: 'Please enter a valid email address.',
     });
   }
 

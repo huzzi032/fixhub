@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 
 import '../../../core/database/local_marketplace_service.dart';
@@ -8,6 +10,62 @@ import '../../../shared/widgets/widgets.dart';
 class ServiceDetailScreen extends StatelessWidget {
   final String serviceId;
   const ServiceDetailScreen({super.key, required this.serviceId});
+
+  Widget _buildHeroImage(MarketplaceServiceItem service) {
+    final cover = service.coverImageUrl;
+
+    if (cover == null) {
+      return Container(
+        height: 220,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          color: AppColors.primary.withValues(alpha: 0.1),
+        ),
+        child: const Icon(
+          Icons.home_repair_service,
+          size: 64,
+          color: AppColors.primary,
+        ),
+      );
+    }
+
+    if (cover.startsWith('data:image')) {
+      final commaIndex = cover.indexOf(',');
+      if (commaIndex > 0 && commaIndex < cover.length - 1) {
+        try {
+          final raw = cover.substring(commaIndex + 1);
+          return ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: SizedBox(
+              height: 220,
+              width: double.infinity,
+              child: Image.memory(base64Decode(raw), fit: BoxFit.cover),
+            ),
+          );
+        } catch (_) {}
+      }
+    }
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(16),
+      child: SizedBox(
+        height: 220,
+        width: double.infinity,
+        child: Image.network(
+          cover,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => Container(
+            color: AppColors.primary.withValues(alpha: 0.1),
+            child: const Icon(
+              Icons.home_repair_service,
+              size: 64,
+              color: AppColors.primary,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -34,18 +92,7 @@ class ServiceDetailScreen extends StatelessWidget {
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              Container(
-                height: 220,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(16),
-                  color: AppColors.primary.withValues(alpha: 0.1),
-                ),
-                child: const Icon(
-                  Icons.home_repair_service,
-                  size: 64,
-                  color: AppColors.primary,
-                ),
-              ),
+              _buildHeroImage(service),
               const SizedBox(height: 16),
               Text(
                 service.title,

@@ -49,6 +49,16 @@ class BookingSubmittedScreen extends StatelessWidget {
               SizedBox(
                 width: double.infinity,
                 height: 52,
+                child: OutlinedButton.icon(
+                  onPressed: () => context.goToBookingChat(bookingId),
+                  icon: const Icon(Icons.chat_bubble_outline),
+                  label: const Text('Open Provider Chat'),
+                ),
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                height: 52,
                 child: OutlinedButton(
                   onPressed: () => context.goToCustomerHome(),
                   child: const Text('Back To Home'),

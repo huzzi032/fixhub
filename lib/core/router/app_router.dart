@@ -30,6 +30,7 @@ import '../../features/customer/screens/customer_profile_screen.dart';
 import '../../features/provider/screens/provider_registration_screen.dart';
 import '../../features/provider/screens/pending_approval_screen.dart';
 import '../../features/provider/screens/provider_dashboard_screen.dart';
+import '../../features/provider/screens/provider_sos_requests_screen.dart';
 import '../../features/provider/screens/my_services_screen.dart';
 import '../../features/provider/screens/add_edit_service_screen.dart';
 import '../../features/provider/screens/service_analytics_screen.dart';
@@ -389,6 +390,10 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const ProviderDashboardScreen(),
       ),
       GoRoute(
+        path: '/provider/sos',
+        builder: (context, state) => const ProviderSosRequestsScreen(),
+      ),
+      GoRoute(
         path: '/provider/services',
         builder: (context, state) => const MyServicesScreen(),
       ),
@@ -564,7 +569,7 @@ extension GoRouterExtension on BuildContext {
   void goToPrivacyPolicy() => push('/privacy-policy');
   void goToTermsOfService() => push('/terms-of-service');
   void goToRoleSelection() => go('/role-selection');
-  void goToSearch() => push('/customer/search');
+  void goToSearch() => go('/customer/search');
   void goToCategory(String category) => push('/customer/category/$category');
   void goToServiceDetail(String serviceId) =>
       push('/customer/service/$serviceId');
@@ -583,20 +588,21 @@ extension GoRouterExtension on BuildContext {
       '/customer/booking/payment?bookingId=${Uri.encodeQueryComponent(bookingId)}');
   void goToReview(Map<String, dynamic> data) =>
       push('/customer/booking/review', extra: data);
-  void goToOrders() => push('/customer/orders');
+  void goToOrders() => go('/customer/orders');
   void goToBookingDetail(String bookingId) =>
       push('/customer/booking/$bookingId');
   void goToBookingChat(String bookingId) =>
       push('/chat/${Uri.encodeComponent(bookingId)}');
   void goToSOS() => push('/customer/sos');
-  void goToDeals() => push('/customer/deals');
+  void goToDeals() => go('/customer/deals');
   void goToCreateDeal() => push('/provider/deals/create');
   void goToDispute(String bookingId) => push(
       '/customer/dispute?bookingId=${Uri.encodeQueryComponent(bookingId)}');
-  void goToCustomerProfile() => push('/customer/profile');
+  void goToCustomerProfile() => go('/customer/profile');
   void goToProviderRegistration() => push('/provider/registration');
   void goToPendingApproval() => push('/provider/pending');
-  void goToMyServices() => push('/provider/services');
+  void goToProviderSOSRequests() => push('/provider/sos');
+  void goToMyServices() => go('/provider/services');
   void goToAddService() => push('/provider/services/add');
   void goToEditService(String serviceId) => push(
       '/provider/services/edit?serviceId=${Uri.encodeQueryComponent(serviceId)}');
@@ -609,12 +615,12 @@ extension GoRouterExtension on BuildContext {
       '/provider/job/active?bookingId=${Uri.encodeQueryComponent(bookingId)}');
   void goToPaymentReceived(String bookingId) => push(
       '/provider/job/payment-received?bookingId=${Uri.encodeQueryComponent(bookingId)}');
-  void goToMyJobs() => push('/provider/jobs');
+  void goToMyJobs() => go('/provider/jobs');
   void goToProviderJobDetail(String bookingId) =>
       push('/provider/job/$bookingId');
   void goToWallet() => push('/provider/wallet');
-  void goToEarnings() => push('/provider/earnings');
-  void goToProviderOwnProfile() => push('/provider/profile');
+  void goToEarnings() => go('/provider/earnings');
+  void goToProviderOwnProfile() => go('/provider/profile');
   void goToVerifications() => push('/admin/verifications');
   void goToDisputeManagement() => push('/admin/disputes');
   void goToTopUps() => push('/admin/topups');

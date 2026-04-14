@@ -87,7 +87,7 @@ class _EmailSignUpScreenState extends ConsumerState<EmailSignUpScreen> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Sign up to get started',
+                  'Sign up first, then choose Customer or Provider and complete your profile.',
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                         color: AppColors.onSurfaceVariant,
                       ),
@@ -151,6 +151,14 @@ class _EmailSignUpScreenState extends ConsumerState<EmailSignUpScreen> {
                     final result = Validators.validatePassword(value ?? '');
                     return result.error;
                   },
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Use 8-32 characters with uppercase, lowercase, number, and special character.',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: AppColors.onSurfaceVariant,
+                  ),
                 ),
                 const SizedBox(height: 16),
 

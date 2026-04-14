@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -52,7 +53,15 @@ class LocalAuthService {
       _currentUser = AppAuthUser(uid: sessionUid);
     }
 
-    if (_currentUser != null && _accessToken != null) {
+    final hasAccessToken = (_accessToken ?? '').trim().isNotEmpty;
+
+    // Migration safety: older local sessions may keep uid/user cache without
+    // a valid access token. Treat those as signed-out to avoid false auth state.
+    if (_currentUser != null && !hasAccessToken) {
+      await _clearSession(notify: false);
+    }
+
+    if (_currentUser != null && hasAccessToken) {
       try {
         await _refreshSessionUser();
       } on AppAuthException catch (error) {
@@ -123,6 +132,7 @@ class LocalAuthService {
   }) async {
     final normalizedEmail = email.trim().toLowerCase();
     _validateEmailOrThrow(normalizedEmail);
+    _validatePasswordOrThrow(password);
 
     final response = await _sendRequest(
       method: 'POST',
@@ -229,6 +239,12 @@ class LocalAuthService {
     required String phone,
     String? email,
     required String role,
+    String? profilePhotoUrl,
+    String? providerBio,
+    List<String>? providerSkills,
+    List<String>? providerCities,
+    int? hourlyRateMin,
+    int? hourlyRateMax,
   }) async {
     if (_currentUser == null || _currentUser!.uid != uid) {
       throw const AppAuthException(
@@ -246,6 +262,21 @@ class LocalAuthService {
         'phone': phone.trim(),
         'email': email?.trim().isEmpty == true ? null : email?.trim(),
         'role': role,
+        if (profilePhotoUrl != null && profilePhotoUrl.trim().isNotEmpty)
+          'profilePhotoUrl': profilePhotoUrl.trim(),
+        if (role == 'provider') 'providerBio': providerBio?.trim() ?? '',
+        if (role == 'provider')
+          'providerSkills': (providerSkills ?? const <String>[])
+              .map((item) => item.trim())
+              .where((item) => item.isNotEmpty)
+              .toList(),
+        if (role == 'provider')
+          'providerCities': (providerCities ?? const <String>[])
+              .map((item) => item.trim())
+              .where((item) => item.isNotEmpty)
+              .toList(),
+        if (role == 'provider') 'hourlyRateMin': hourlyRateMin,
+        if (role == 'provider') 'hourlyRateMax': hourlyRateMax,
       },
     );
 
@@ -266,6 +297,7 @@ class LocalAuthService {
     required String name,
     required String phone,
     String? email,
+    String? profilePhotoUrl,
   }) async {
     final normalizedEmail = email?.trim().toLowerCase();
 
@@ -294,6 +326,8 @@ class LocalAuthService {
             ? null
             : normalizedEmail,
         'role': role,
+        if (profilePhotoUrl != null && profilePhotoUrl.trim().isNotEmpty)
+          'profilePhotoUrl': profilePhotoUrl.trim(),
       },
     );
 
@@ -381,6 +415,10 @@ class LocalAuthService {
 
   Future<void> submitProviderRegistration({
     required String uid,
+    required String bio,
+    required List<String> skills,
+    required String primaryCity,
+    required int hourlyRate,
   }) async {
     if (_currentUser == null || _currentUser!.uid != uid) {
       throw const AppAuthException(
@@ -404,6 +442,11 @@ class LocalAuthService {
       phone: phone,
       email: email,
       role: 'provider',
+      providerBio: bio,
+      providerSkills: skills,
+      providerCities: <String>[primaryCity],
+      hourlyRateMin: hourlyRate,
+      hourlyRateMax: hourlyRate,
     );
   }
 
@@ -500,21 +543,47 @@ class LocalAuthService {
     }
   }
 
-  String _resolveApiBaseUrl() {
+  List<String> _resolveApiBaseUrls() {
     final configured =
         const String.fromEnvironment('FIXHUB_API_BASE_URL', defaultValue: '')
             .trim();
 
-    if (configured.isEmpty) {
-      throw const AppAuthException(
-        'config-missing',
-        'Backend URL is missing. Rebuild with --dart-define=FIXHUB_API_BASE_URL=https://your-backend.vercel.app',
-      );
+    String normalize(String value) {
+      final trimmed = value.trim();
+      if (trimmed.endsWith('/')) {
+        return trimmed.substring(0, trimmed.length - 1);
+      }
+      return trimmed;
     }
 
-    return configured.endsWith('/')
-        ? configured.substring(0, configured.length - 1)
-        : configured;
+    final urls = <String>[];
+    void addUrl(String value) {
+      final normalized = normalize(value);
+      if (normalized.isEmpty || urls.contains(normalized)) {
+        return;
+      }
+      urls.add(normalized);
+    }
+
+    if (configured.isNotEmpty) {
+      addUrl(configured);
+    }
+
+    // In debug, try local fallbacks after configured URL so stale tunnels do not block development.
+    if (kDebugMode) {
+      addUrl('http://127.0.0.1:8080');
+      addUrl('http://10.0.2.2:8080');
+      addUrl('http://localhost:8080');
+    }
+
+    if (urls.isNotEmpty) {
+      return urls;
+    }
+
+    throw const AppAuthException(
+      'config-missing',
+      'Backend URL is missing. Rebuild with --dart-define=FIXHUB_API_BASE_URL=https://your-backend-domain',
+    );
   }
 
   Future<void> _refreshSessionUser() async {
@@ -536,8 +605,7 @@ class LocalAuthService {
     Map<String, dynamic>? body,
     bool requireAuth = false,
   }) async {
-    final baseUrl = _resolveApiBaseUrl();
-    final uri = Uri.parse('$baseUrl$path');
+    final baseUrls = _resolveApiBaseUrls();
     final headers = <String, String>{
       'Content-Type': 'application/json',
       'Accept': 'application/json',
@@ -554,79 +622,118 @@ class LocalAuthService {
       headers['Authorization'] = 'Bearer $token';
     }
 
-    http.Response response;
-    try {
-      switch (method.toUpperCase()) {
-        case 'GET':
-          response =
-              await http.get(uri, headers: headers).timeout(_requestTimeout);
-          break;
-        case 'POST':
-          response = await http
-              .post(
-                uri,
-                headers: headers,
-                body: body == null ? null : jsonEncode(body),
-              )
-              .timeout(_requestTimeout);
-          break;
-        default:
-          throw AppAuthException(
-            'invalid-request',
-            'Unsupported HTTP method: $method',
-          );
-      }
-    } on TimeoutException {
-      throw const AppAuthException(
-        'timeout',
-        'Request timed out. Please try again.',
-      );
-    } on SocketException {
-      throw const AppAuthException(
-        'network-error',
-        'Cannot reach server. Check your internet connection.',
-      );
-    }
+    for (var index = 0; index < baseUrls.length; index++) {
+      final uri = Uri.parse('${baseUrls[index]}$path');
+      final isLastBaseUrl = index == baseUrls.length - 1;
+      final requestHeaders = Map<String, String>.from(headers);
 
-    Map<String, dynamic> payload = <String, dynamic>{};
-    final rawBody = utf8.decode(response.bodyBytes);
-    if (rawBody.trim().isNotEmpty) {
+      if (_isLocalTunnelHost(uri.host)) {
+        requestHeaders['bypass-tunnel-reminder'] = 'true';
+      }
+
+      http.Response response;
       try {
-        final decoded = jsonDecode(rawBody);
-        if (decoded is Map<String, dynamic>) {
-          payload = decoded;
-        } else if (decoded is Map) {
-          payload = Map<String, dynamic>.from(decoded);
+        switch (method.toUpperCase()) {
+          case 'GET':
+            response = await http
+                .get(uri, headers: requestHeaders)
+                .timeout(_requestTimeout);
+            break;
+          case 'POST':
+            response = await http
+                .post(
+                  uri,
+                  headers: requestHeaders,
+                  body: body == null ? null : jsonEncode(body),
+                )
+                .timeout(_requestTimeout);
+            break;
+          default:
+            throw AppAuthException(
+              'invalid-request',
+              'Unsupported HTTP method: $method',
+            );
         }
-      } catch (_) {
-        // Keep payload empty when server body is not valid JSON.
+      } on TimeoutException {
+        if (!isLastBaseUrl) {
+          continue;
+        }
+        if (kDebugMode) {
+          throw AppAuthException('network-error', _buildNetworkErrorMessage());
+        }
+        throw const AppAuthException(
+          'timeout',
+          'Request timed out. Please try again.',
+        );
+      } on SocketException {
+        if (!isLastBaseUrl) {
+          continue;
+        }
+        throw AppAuthException('network-error', _buildNetworkErrorMessage());
       }
+
+      Map<String, dynamic> payload = <String, dynamic>{};
+      final rawBody = utf8.decode(response.bodyBytes);
+      if (rawBody.trim().isNotEmpty) {
+        try {
+          final decoded = jsonDecode(rawBody);
+          if (decoded is Map<String, dynamic>) {
+            payload = decoded;
+          } else if (decoded is Map) {
+            payload = Map<String, dynamic>.from(decoded);
+          }
+        } catch (_) {
+          // Keep payload empty when server body is not valid JSON.
+        }
+      }
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return payload;
+      }
+
+      final message = payload['error']?.toString() ?? 'Request failed.';
+
+      if (response.statusCode == 401) {
+        await _clearSession(notify: true);
+        throw AppAuthException('unauthorized', message);
+      }
+
+      if (response.statusCode == 404) {
+        throw AppAuthException('not-found', message);
+      }
+
+      if (response.statusCode == 409) {
+        throw AppAuthException('conflict', message);
+      }
+
+      if (response.statusCode == 400) {
+        throw AppAuthException('invalid-request', message);
+      }
+
+      if (response.statusCode == 502 ||
+          response.statusCode == 503 ||
+          response.statusCode == 504) {
+        throw AppAuthException('network-error', _buildNetworkErrorMessage());
+      }
+
+      throw AppAuthException('request-failed', message);
     }
 
-    if (response.statusCode >= 200 && response.statusCode < 300) {
-      return payload;
+    throw const AppAuthException('request-failed', 'Request failed.');
+  }
+
+  String _buildNetworkErrorMessage() {
+    if (kDebugMode) {
+      return 'Cannot reach FixHub server. Make sure backend is running. If you are on a physical Android phone, run adb reverse tcp:8080 tcp:8080. If using --dart-define with a tunnel URL, ensure it is still active.';
     }
 
-    final message = payload['error']?.toString() ?? 'Request failed.';
+    return 'Cannot reach FixHub server right now. Please try again.';
+  }
 
-    if (response.statusCode == 401) {
-      await _clearSession(notify: true);
-      throw AppAuthException('unauthorized', message);
-    }
-
-    if (response.statusCode == 404) {
-      throw AppAuthException('not-found', message);
-    }
-
-    if (response.statusCode == 409) {
-      throw AppAuthException('conflict', message);
-    }
-
-    if (response.statusCode == 400) {
-      throw AppAuthException('invalid-request', message);
-    }
-
-    throw AppAuthException('request-failed', message);
+  bool _isLocalTunnelHost(String host) {
+    final normalized = host.trim().toLowerCase();
+    return normalized.endsWith('.loca.lt') ||
+        normalized.endsWith('.localtunnel.me');
   }
 
   void _validateEmailOrThrow(String email) {
@@ -652,6 +759,43 @@ class LocalAuthService {
     if (!regex.hasMatch(normalized)) {
       throw const AppAuthException(
           'invalid-email', 'Please enter a valid email address.');
+    }
+  }
+
+  void _validatePasswordOrThrow(String password) {
+    if (password.isEmpty) {
+      throw const AppAuthException('invalid-password', 'Password is required.');
+    }
+
+    if (password.length < AppConstants.minPasswordLength) {
+      throw const AppAuthException(
+        'invalid-password',
+        'Password must be at least ${AppConstants.minPasswordLength} characters.',
+      );
+    }
+
+    if (password.length > AppConstants.maxPasswordLength) {
+      throw const AppAuthException(
+        'invalid-password',
+        'Password must not exceed ${AppConstants.maxPasswordLength} characters.',
+      );
+    }
+
+    if (password.contains(RegExp(r'\s'))) {
+      throw const AppAuthException(
+        'invalid-password',
+        'Password must not contain spaces.',
+      );
+    }
+
+    if (!RegExp(r'[A-Z]').hasMatch(password) ||
+        !RegExp(r'[a-z]').hasMatch(password) ||
+        !RegExp(r'[0-9]').hasMatch(password) ||
+        !RegExp(r'[^A-Za-z0-9]').hasMatch(password)) {
+      throw const AppAuthException(
+        'invalid-password',
+        'Password must include uppercase, lowercase, number and special character.',
+      );
     }
   }
 }
